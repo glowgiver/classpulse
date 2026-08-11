@@ -66,7 +66,7 @@ const FREMDSPRACHEN_CRITERIA = [
     examples:["Bringt neue Ideen ein", "Baut sinnvoll auf anderen auf", "Kommt auf den Punkt"],
   },
   {
-    id:"fs3", short:"Hausaufgaben", area:"Arbeitsverhalten",
+    id:"fs3", short:"HA & Heft", area:"Arbeitsverhalten",
     full:"Erstellt Hausaufgaben vollständig und sorgfältig; führt Heft/Mappen übersichtlich.",
     examples:["HA vollständig da", "Heft ordentlich geführt", "Vorbereitung sichtbar"],
   },
@@ -92,8 +92,8 @@ const FREMDSPRACHEN_CRITERIA = [
   },
   {
     id:"fs8", short:"Tests", area:"Sprache",
-    full:"Zeigt in Vokabel- und Grammatiktests, dass er/sie regelmäßig lernt.",
-    examples:["Testergebnisse als Tendenz", "Regelmäßiges Lernen erkennbar", "Nur Tendenz +/− eintragen"],
+    full:"Zeigt in Vokabel- und Grammatiktests, dass er/sie regelmäßig lernt und wiederholt.",
+    examples:["Note 1–2 → + eintragen", "Note 5–6 → − eintragen", "Note 3–4 → nichts eintragen (Durchschnitt)"],
   },
 ];
 
@@ -139,8 +139,8 @@ const GENERAL_CRITERIA = [
   },
   {
     id:"gs3", short:"Auf andere eingehen", area:"Sprache & Komm.",
-    full:"Berücksichtigt Beiträge von Mitschülern; bringt Gruppe voran.",
-    examples:["'Ich ergänze, was X gesagt hat...'", "Greift Ideen anderer auf", "Hilft der Gruppe weiterzukommen"],
+    full:"Berücksichtigt Beiträge von Mitschülern; bringt eigene Gedanken ein statt nur zu wiederholen.",
+    examples:["'Ich ergänze, was X gesagt hat...'", "Greift Ideen anderer auf und entwickelt sie weiter", "− wenn nur wiederholt ohne eigenen Beitrag ('Laberer')"],
   },
 ];
 
@@ -298,12 +298,15 @@ function App() {
   const [hwActive,     setHwActive]     = useState(false);
   const [hwExceptions, setHwExceptions] = useState({});
 
-  const [noteText,    setNoteText]    = useState("");
-  const [showImport,  setShowImport]  = useState(false);
-  const [importText,  setImportText]  = useState("");
-  const [showExport,  setShowExport]  = useState(false);
-  const [copyOK,      setCopyOK]      = useState(false);
-  const [infoCrit,    setInfoCrit]    = useState(null); // Kriterium für Info-Modal
+  const [noteText,      setNoteText]      = useState("");
+  const [showImport,    setShowImport]    = useState(false);
+  const [importText,    setImportText]    = useState("");
+  const [showExport,    setShowExport]    = useState(false);
+  const [copyOK,        setCopyOK]        = useState(false);
+  const [infoCrit,      setInfoCrit]      = useState(null);
+  const [showBackup,    setShowBackup]    = useState(false);
+  const [backupImportOK,setBackupImportOK]= useState(false);
+  const [backupError,   setBackupError]  = useState("");
 
   // Undo: { type, description, undo: () => void, expires: timestamp }
   const [lastAction, setLastAction] = useState(null);
@@ -426,6 +429,79 @@ function App() {
   };
 
   const goHome = () => { setActiveCourse(null); setSessionPhase("select"); setActiveStudent(null); setLastAction(null); };
+
+  // ── JSON BACKUP ──────────────────────────────────────────────────────────
+  const exportBackup = () => {
+    const backup = {
+      version: "1.0",
+      exportDate: new Date().toISOString(),
+      app: "ClassPulse",
+      data: { courses, observations, homework, absences },
+    };
+    const json = JSON.stringify(backup, null, 2);
+    const blob = new Blob([json], { type:"application/json" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    const date = new Date().toISOString().slice(0,10);
+    a.href = url; a.download = `ClassPulse_Backup_${date}.json`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  const importBackup = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const backup = JSON.parse(e.target.result);
+        if (!backup.data || !backup.app === "ClassPulse") throw new Error("Ungültiges Format");
+        const { courses: c, observations: o, homework: h, absences: a } = backup.data;
+        if (!c || !o || !h || !a) throw new Error("Daten unvollständig");
+        setCourses(c);
+        setObservations(o);
+        setHomework(h);
+        setAbsences(a);
+        saveData("obs_courses",      c);
+        saveData("obs_observations", o);
+        saveData("obs_homework",     h);
+        saveData("obs_absences",     a);
+        setBackupImportOK(true);
+        setBackupError("");
+        setTimeout(() => setBackupImportOK(false), 3000);
+      } catch(err) {
+        setBackupError("Fehler: " + err.message + " — Ist das eine ClassPulse-Backup-Datei?");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // ── NOTENVORSCHLAG ───────────────────────────────────────────────────────
+  const MIN_ENTRIES  = 5;
+  const MIN_DAYS     = 3;
+
+  const getGradeProposal = (courseName, studentId) => {
+    const obs = observations.filter(o =>
+      o.course === courseName && o.studentId === studentId && o.criterionId !== "note"
+    );
+    const days = new Set(obs.map(o => o.date)).size;
+    if (obs.length < MIN_ENTRIES || days < MIN_DAYS) return null;
+    const pos = obs.filter(o => o.rating === "+").length;
+    const ratio = pos / obs.length;
+    if (ratio >= 0.80) return { grade:"1–2", label:"sehr gut / gut",         color:C.green  };
+    if (ratio >= 0.60) return { grade:"2–3", label:"gut / befriedigend",     color:C.green  };
+    if (ratio >= 0.45) return { grade:"3",   label:"befriedigend",           color:C.amber  };
+    if (ratio >= 0.30) return { grade:"3–4", label:"befriedigend / ausreichend", color:C.amber };
+    if (ratio >= 0.15) return { grade:"4–5", label:"ausreichend / mangelhaft",   color:C.red   };
+    return               { grade:"5–6", label:"mangelhaft / ungenügend",    color:C.red   };
+  };
+
+  const getObsProgress = (courseName, studentId) => {
+    const obs = observations.filter(o =>
+      o.course === courseName && o.studentId === studentId && o.criterionId !== "note"
+    );
+    const days = new Set(obs.map(o => o.date)).size;
+    return { count: obs.length, days, ready: obs.length >= MIN_ENTRIES && days >= MIN_DAYS };
+  };
 
   // ── RENDER: HOME ─────────────────────────────────────────────────────────
 
@@ -614,7 +690,30 @@ function App() {
           </div>
 
           <h2 style={{ fontSize:22, fontWeight:700, margin:"0 0 2px" }}>{student?.name}</h2>
-          <p style={{ fontSize:12, color:C.textDim, marginBottom:20 }}>{activeCourse}</p>
+          <p style={{ fontSize:12, color:C.textDim, marginBottom:8 }}>{activeCourse}</p>
+
+          {/* Notenvorschlag wenn genug Daten */}
+          {(() => {
+            const grade = getGradeProposal(activeCourse, activeStudent);
+            const prog  = getObsProgress(activeCourse, activeStudent);
+            if (grade) return (
+              <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:10, padding:"10px 14px", marginBottom:16 }}>
+                <div style={{ fontSize:10, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:2 }}>NOTENVORSCHLAG</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ fontSize:16, fontWeight:700, color:grade.color }}>Note {grade.grade}</span>
+                  <span style={{ fontSize:11, color:C.textDim }}>{grade.label}</span>
+                </div>
+                <div style={{ fontSize:10, color:C.textMuted, marginTop:4 }}>
+                  Basierend auf {prog.count} Einträgen / {prog.days} Tagen · Pädagogische Einschätzung entscheidet.
+                </div>
+              </div>
+            );
+            return (
+              <div style={{ fontSize:11, color:C.textMuted, marginBottom:16 }}>
+                Noch kein Vorschlag — {Math.max(0, MIN_ENTRIES-prog.count)} Einträge und {Math.max(0, MIN_DAYS-prog.days)} weitere Tage nötig.
+              </div>
+            );
+          })()}
 
           {/* Kriterien-Grid pro Bereich */}
           {areas.map(area => {
@@ -830,17 +929,61 @@ function App() {
           </div>
         </div>
 
-        <div style={S.sectionLbl}>Pro Kurs</div>
+        <div style={S.sectionLbl}>Pro Kurs — Beobachtungsstand</div>
         {courses.filter(c => c.criteriaType !== "none").map(course => {
-          const cObs    = observations.filter(o => o.course === course.name);
+          const cObs    = observations.filter(o => o.course === course.name && o.criterionId !== "note");
           const stCount = new Set(cObs.map(o => o.studentId)).size;
+          const readyCount = course.students.filter(st => getObsProgress(course.name, st.id).ready).length;
+          const totalSt = course.students.length;
+          const pct = Math.round((readyCount / totalSt) * 100);
+
           return (
-            <div key={course.name} style={{ ...S.courseCard(false), cursor:"default" }}>
-              <div style={{ display:"flex", justifyContent:"space-between" }}>
+            <div key={course.name} style={{ ...S.courseCard(false), cursor:"default", marginBottom:16 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
                 <div style={S.courseTitle}>{course.name}</div>
-                <div style={{ fontSize:13, fontWeight:700, color:C.accent }}>{cObs.length}</div>
+                <div style={{ fontSize:13, fontWeight:700, color:C.accent }}>{cObs.length} Eintr.</div>
               </div>
-              <div style={S.courseMeta}>{stCount} / {course.students.length} Schüler beobachtet</div>
+
+              {/* Fortschrittsbalken */}
+              <div style={{ marginBottom:6 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                  <span style={{ fontSize:11, color:C.textDim }}>
+                    {readyCount}/{totalSt} Schüler bereit für Notenvorschlag
+                  </span>
+                  <span style={{ fontSize:11, color:C.textDim }}>{pct}%</span>
+                </div>
+                <div style={{ height:6, background:C.border, borderRadius:3, overflow:"hidden" }}>
+                  <div style={{ height:"100%", width:`${pct}%`, background:pct===100?C.green:C.accent, borderRadius:3, transition:"width 0.3s" }} />
+                </div>
+              </div>
+
+              {/* Schüler-Liste mit Status */}
+              <div style={{ marginTop:8 }}>
+                {course.students.map(st => {
+                  const prog   = getObsProgress(course.name, st.id);
+                  const grade  = getGradeProposal(course.name, st.id);
+                  return (
+                    <div key={st.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.border}` }}>
+                      <span style={{ fontSize:12, color:C.text, flex:1 }}>{st.name}</span>
+                      <span style={{ fontSize:11, color:C.textMuted, marginRight:8 }}>
+                        {prog.count} Eintr. / {prog.days} Tage
+                      </span>
+                      {grade ? (
+                        <span style={{ fontSize:11, fontWeight:700, color:grade.color, minWidth:32, textAlign:"right" }}>
+                          Note {grade.grade}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize:10, color:C.textMuted, minWidth:32, textAlign:"right" }}>
+                          {MIN_ENTRIES - prog.count > 0 ? `noch ${MIN_ENTRIES - prog.count}` : `${MIN_DAYS - prog.days}T fehlt`}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize:10, color:C.textMuted, marginTop:6 }}>
+                Notenvorschlag ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} verschiedenen Tagen · Pädagogische Einschätzung der Lehrkraft entscheidet.
+              </div>
             </div>
           );
         })}
@@ -881,7 +1024,35 @@ function App() {
     <div style={S.page}>
       <h2 style={{ fontSize:20, fontWeight:700, margin:"0 0 16px" }}>Einstellungen</h2>
 
-      <div style={S.sectionLbl}>Export</div>
+      {/* BACKUP — wichtigste Sektion ganz oben */}
+      <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:12, padding:"14px 16px", marginBottom:8 }}>
+        <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:4 }}>DATENSICHERUNG</div>
+        <div style={{ fontSize:13, color:C.text, marginBottom:12, lineHeight:"1.6" }}>
+          Einmal pro Woche sichern — schützt vor Datenverlust bei App-Updates oder Browser-Cache-Löschung.
+        </div>
+        <button style={{ ...S.btn("primary"), marginTop:0 }} onClick={exportBackup}>
+          <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            <Icon name="download" size={16} color="#fff" /> Backup herunterladen (.json)
+          </span>
+        </button>
+        <div style={{ ...S.sectionLbl, marginTop:16 }}>Backup wiederherstellen</div>
+        <div style={{ fontSize:12, color:C.textDim, marginBottom:8 }}>
+          Backup-Datei auswählen — alle aktuellen Daten werden ersetzt.
+        </div>
+        <label style={{ display:"block", background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, padding:"13px 20px", fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", textAlign:"center", marginTop:0 }}>
+          <Icon name="upload" size={16} color={C.textDim} /> Backup importieren
+          <input type="file" accept=".json" style={{ display:"none" }}
+            onChange={e => importBackup(e.target.files[0])} />
+        </label>
+        {backupImportOK && (
+          <div style={{ fontSize:12, color:C.green, marginTop:8, fontWeight:600 }}>✓ Backup erfolgreich wiederhergestellt!</div>
+        )}
+        {backupError && (
+          <div style={{ fontSize:12, color:C.red, marginTop:8 }}>{backupError}</div>
+        )}
+      </div>
+
+      <div style={S.sectionLbl}>CSV / PDF Export</div>
       <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
         onClick={() => { setShowExport(true); setCopyOK(false); }}>
         <Icon name="download" size={16} color={C.textDim} /> Daten exportieren
@@ -902,12 +1073,15 @@ function App() {
 
       <div style={{ ...S.sectionLbl, marginTop:24 }}>Info</div>
       <div style={{ fontSize:12, color:C.textDim, lineHeight:"1.9", background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
-        <strong style={{ color:C.text }}>ClassPulse — Participation Tracker v1.0</strong><br/>
+        <strong style={{ color:C.text }}>ClassPulse — Participation Tracker v1.1</strong><br/>
         Daten lokal auf diesem Gerät (localStorage).<br/>
         Kein Server · kein Login · kein Tracking.<br/><br/>
         <strong style={{ color:C.text }}>Bewertungsbögen:</strong><br/>
         Englisch (8a, 12. Kl.) → Fremdsprachen-Bogen (8 Kriterien)<br/>
         Alle anderen Fächer → Allg. Grootmoor-Bogen (8 Kriterien, 3/2/3)<br/><br/>
+        <strong style={{ color:C.text }}>Notenvorschlag:</strong><br/>
+        Ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} verschiedenen Tagen pro Schüler.<br/>
+        Pädagogische Einschätzung der Lehrkraft entscheidet.<br/><br/>
         <strong style={{ color:C.text }}>Gewichtung:</strong><br/>
         60% sonstige Leistungen / 40% schriftlich
       </div>
