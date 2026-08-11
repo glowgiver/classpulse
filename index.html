@@ -185,7 +185,7 @@ const S = {
   subtitle:    { fontSize:11, color:C.textDim, marginTop:2 },
   nav:         { position:"fixed", bottom:0, left:0, right:0, background:C.card, borderTop:`1px solid ${C.border}`, display:"flex", justifyContent:"space-around", padding:`10px 0 max(14px,env(safe-area-inset-bottom))`, zIndex:100 },
   navBtn:   a  => ({ background:"none", border:"none", color:a?C.accent:C.textDim, fontSize:10, fontWeight:a?600:400, display:"flex", flexDirection:"column", alignItems:"center", gap:3, cursor:"pointer", padding:"4px 16px", WebkitAppearance:"none" }),
-  page:        { padding:"16px 20px", paddingBottom:"100px" },
+  page:        { padding:"16px 20px", paddingBottom:"160px" },
   sectionLbl:  { fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.08em", color:C.textDim, marginBottom:8, marginTop:20 },
   courseCard: a => ({ background:a?C.accentSoft:C.card, border:`1px solid ${a?C.accent:C.border}`, borderRadius:12, padding:"14px 16px", marginBottom:8, cursor:"pointer" }),
   courseTitle: { fontSize:15, fontWeight:600 },
@@ -455,9 +455,12 @@ function App() {
         <div style={{ display:"flex", gap:8, marginTop:16 }}>
           <button style={S.btn("ghost")} onClick={() => { setTodayAbsent([]); finishAbsent(); }}>Niemand fehlt</button>
           <button style={S.btn("primary")} onClick={finishAbsent}>
-            Weiter {todayAbsent.length > 0 ? `(${todayAbsent.length} fehlt)` : "→"}
+            Speichern & weiter {todayAbsent.length > 0 ? `(${todayAbsent.length} fehlt)` : "→"}
           </button>
         </div>
+        <p style={{ fontSize:11, color:C.textMuted, textAlign:"center", marginTop:8 }}>
+          Wird automatisch gespeichert.
+        </p>
       </div>
     );
   };
@@ -515,7 +518,8 @@ function App() {
                 </div>
               );
             })}
-            <button style={{ ...S.btn("primary"), marginTop:16 }} onClick={finishHomework}>Weiter →</button>
+            <button style={{ ...S.btn("primary"), marginTop:16 }} onClick={finishHomework}>Speichern & weiter →</button>
+            <p style={{ fontSize:11, color:C.textMuted, textAlign:"center", marginTop:6 }}>Wird automatisch gespeichert.</p>
           </>
         )}
       </div>
@@ -532,62 +536,119 @@ function App() {
     const absentIds = absences[`${today}_${activeCourse}`] || [];
     const available = course.students.filter(st => !absentIds.includes(st.id));
 
-    // ── Detail view ──
+    // ── Detail view — Grid ──
     if (activeStudent) {
       const student  = course.students.find(st => st.id === activeStudent);
       const todayObs = observations.filter(o => o.course === activeCourse && o.studentId === activeStudent && o.date === today);
       const areas    = [...new Set(criteria.map(c => c.area))];
+      const doneCount = todayObs.filter(o => o.criterionId !== "note").length;
 
       return (
         <div style={S.page}>
-          <button style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", padding:0, marginBottom:12 }}
-            onClick={() => setActiveStudent(null)}>← Zurück</button>
-          <h2 style={{ fontSize:20, fontWeight:700, margin:"0 0 2px" }}>{student?.name}</h2>
-          <p style={{ fontSize:12, color:C.textDim, marginBottom:16 }}>
-            {activeCourse} · Heute: {todayObs.filter(o=>o.criterionId!=="note").length} Kriterien
-          </p>
+          {/* Header */}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+            <button style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", padding:0 }}
+              onClick={() => setActiveStudent(null)}>← Zurück</button>
+            <span style={{ fontSize:12, color:C.textDim }}>
+              {doneCount}/{criteria.length} bewertet
+            </span>
+          </div>
 
-          {areas.map(area => (
-            <div key={area}>
-              <div style={S.sectionLbl}>{area}</div>
-              {criteria.filter(c => c.area === area).map(crit => {
-                const last = [...observations]
-                  .filter(o => o.course === activeCourse && o.studentId === activeStudent && o.criterionId === crit.id)
-                  .sort((a,b) => b.date.localeCompare(a.date))[0];
-                const todayEntry = todayObs.find(o => o.criterionId === crit.id);
-                return (
-                  <div key={crit.id} style={{ ...S.critCard, borderColor:todayEntry?(todayEntry.rating==="+"?C.green:C.red):C.border }}>
-                    <div style={{ fontSize:13, fontWeight:600 }}>{crit.short}</div>
-                    <div style={{ fontSize:11, color:C.textDim, marginTop:2, marginBottom:8 }}>{crit.full}</div>
-                    <div style={{ display:"flex", gap:6 }}>
-                      <button style={S.btnSm(todayEntry?.rating==="+"?"green":"ghost")}
-                        onClick={() => addObs(activeStudent, crit.id, "+")}>+ gut</button>
-                      <button style={S.btnSm(todayEntry?.rating==="-"?"red":"ghost")}
-                        onClick={() => addObs(activeStudent, crit.id, "-")}>− schwach</button>
-                    </div>
-                    {last && last.date !== today && (
-                      <div style={{ fontSize:10, color:C.textMuted, marginTop:6 }}>
-                        Letztes Mal {last.date}: {last.rating==="+"?"gut":"schwach"}
+          <h2 style={{ fontSize:22, fontWeight:700, margin:"0 0 2px" }}>{student?.name}</h2>
+          <p style={{ fontSize:12, color:C.textDim, marginBottom:20 }}>{activeCourse}</p>
+
+          {/* Kriterien-Grid pro Bereich */}
+          {areas.map(area => {
+            const areaCriteria = criteria.filter(c => c.area === area);
+            return (
+              <div key={area} style={{ marginBottom:20 }}>
+                <div style={S.sectionLbl}>{area}</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                  {areaCriteria.map(crit => {
+                    const todayEntry = todayObs.find(o => o.criterionId === crit.id);
+                    const isPos = todayEntry?.rating === "+";
+                    const isNeg = todayEntry?.rating === "-";
+                    return (
+                      <div key={crit.id} style={{
+                        background: isPos ? C.greenSoft : isNeg ? C.redSoft : C.card,
+                        border: `1px solid ${isPos ? C.green : isNeg ? C.red : C.border}`,
+                        borderRadius:10,
+                        padding:"10px 10px 8px",
+                        display:"flex",
+                        flexDirection:"column",
+                        gap:8,
+                      }}>
+                        {/* Kurzname */}
+                        <div style={{
+                          fontSize:12,
+                          fontWeight:700,
+                          color: isPos ? C.green : isNeg ? C.red : C.text,
+                          lineHeight:"1.3",
+                        }}>{crit.short}</div>
+
+                        {/* + / − Buttons */}
+                        <div style={{ display:"flex", gap:5 }}>
+                          <button
+                            onClick={() => addObs(activeStudent, crit.id, "+")}
+                            style={{
+                              flex:1,
+                              padding:"7px 0",
+                              background: isPos ? C.green : "transparent",
+                              color: isPos ? "#fff" : C.green,
+                              border: `1px solid ${C.green}`,
+                              borderRadius:7,
+                              fontSize:15,
+                              fontWeight:700,
+                              cursor:"pointer",
+                              WebkitAppearance:"none",
+                            }}>+</button>
+                          <button
+                            onClick={() => addObs(activeStudent, crit.id, "-")}
+                            style={{
+                              flex:1,
+                              padding:"7px 0",
+                              background: isNeg ? C.red : "transparent",
+                              color: isNeg ? "#fff" : C.red,
+                              border: `1px solid ${C.red}`,
+                              borderRadius:7,
+                              fontSize:15,
+                              fontWeight:700,
+                              cursor:"pointer",
+                              WebkitAppearance:"none",
+                            }}>−</button>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
 
-          <div style={{ ...S.sectionLbl, marginTop:20 }}>Freie Notiz (optional)</div>
+          {/* Notiz */}
+          <div style={{ ...S.sectionLbl, marginTop:4 }}>Freie Notiz (optional)</div>
           <div style={{ display:"flex", gap:8 }}>
             <input
               style={{ flex:1, padding:"11px 12px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, outline:"none" }}
               placeholder="Kurze Notiz…"
               value={noteText}
               onChange={e => setNoteText(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && noteText.trim()) {
+                  addObs(activeStudent, "note", "+", noteText.trim());
+                  setNoteText("");
+                }
+              }}
             />
             <button style={S.btnSm("primary")} onClick={() => {
               if (noteText.trim()) { addObs(activeStudent, "note", "+", noteText.trim()); setNoteText(""); }
             }}>+</button>
           </div>
+
+          {/* Zurück-Button unten für schnellen Wechsel */}
+          <button style={{ ...S.btn("ghost"), marginTop:16 }} onClick={() => setActiveStudent(null)}>
+            ← Nächste/r Schüler/in
+          </button>
         </div>
       );
     }
@@ -764,7 +825,7 @@ function App() {
       <div style={S.sectionLbl}>Export</div>
       <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
         onClick={() => { setShowExport(true); setCopyOK(false); }}>
-        <Icon name="download" size={16} color={C.textDim} /> CSV exportieren
+        <Icon name="download" size={16} color={C.textDim} /> Daten exportieren
       </button>
 
       <div style={{ ...S.sectionLbl, marginTop:24 }}>Daten zurücksetzen</div>
@@ -868,65 +929,148 @@ function App() {
       {showExport && (
         <div style={S.modal} onClick={() => setShowExport(false)}>
           <div style={S.modalInner} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>CSV-Export</h3>
-            <p style={{ fontSize:13, color:C.textDim, marginBottom:12 }}>
-              In Zwischenablage kopieren → in Excel/Numbers einfügen.
+            <h3 style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>Export</h3>
+            <p style={{ fontSize:13, color:C.textDim, marginBottom:20 }}>
+              Datei direkt herunterladen — Excel öffnet sie sauber mit allen Spalten.
             </p>
-            <textarea style={{ ...S.textarea, minHeight:180, fontSize:11, fontFamily:"monospace" }}
-              readOnly value={generateCSV(courses, observations, homework, absences)}
-              onFocus={e => e.target.select()} />
-            <div style={{ display:"flex", gap:8, marginTop:12 }}>
-              <button style={S.btn("ghost")} onClick={() => setShowExport(false)}>Schließen</button>
-              <button style={S.btn(copyOK?"green":"primary")} onClick={() => {
-                const csv = generateCSV(courses, observations, homework, absences);
-                if (navigator.clipboard) {
-                  navigator.clipboard.writeText(csv).then(() => { setCopyOK(true); setTimeout(()=>setCopyOK(false),2500); });
-                } else {
-                  // iOS Safari fallback
-                  const ta = document.createElement("textarea");
-                  ta.value = csv; ta.style.position="fixed"; ta.style.opacity="0";
-                  document.body.appendChild(ta); ta.focus(); ta.select();
-                  document.execCommand("copy"); document.body.removeChild(ta);
-                  setCopyOK(true); setTimeout(()=>setCopyOK(false),2500);
-                }
-              }}>{copyOK ? "✓ Kopiert!" : "Kopieren"}</button>
-            </div>
+
+            {/* Pro-Kurs Download */}
+            <div style={S.sectionLbl}>Pro Kurs</div>
+            {courses.filter(c => c.criteriaType !== "none").map(course => {
+              const courseObs = observations.filter(o => o.course === course.name);
+              return (
+                <div key={course.name} style={{ ...S.row, cursor:"pointer" }} onClick={() => {
+                  const criteria = getCriteria(course.name);
+                  const lines = [];
+                  // BOM für Excel-Kompatibilität
+                  lines.push(`Name,${criteria.map(c => c.short).join(";")};HA-Quote;Fehltage;Gesamt`);
+                  course.students.forEach(st => {
+                    const obs = observations.filter(o => o.course === course.name && o.studentId === st.id);
+                    const critSummary = criteria.map(crit => {
+                      const pos = obs.filter(o => o.criterionId === crit.id && o.rating === "+").length;
+                      const neg = obs.filter(o => o.criterionId === crit.id && o.rating === "-").length;
+                      return (pos === 0 && neg === 0) ? "-" : `+${pos}/-${neg}`;
+                    });
+                    let hwTotal = 0, hwDone = 0;
+                    Object.entries(homework).forEach(([key, val]) => {
+                      if (key.includes(`_${course.name}`)) {
+                        hwTotal++;
+                        const status = val[st.id];
+                        if (status === undefined || status === "done") hwDone++;
+                        else if (status === "half") hwDone += 0.5;
+                      }
+                    });
+                    const hwPct = hwTotal > 0 ? `${Math.round((hwDone/hwTotal)*100)}%` : "-";
+                    let absentCount = 0;
+                    Object.entries(absences).forEach(([key, ids]) => {
+                      if (key.includes(`_${course.name}`) && ids.includes(st.id)) absentCount++;
+                    });
+                    lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${absentCount};${obs.length}`);
+                  });
+                  const csv = "\uFEFF" + lines.join("\r\n");
+                  const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
+                  const url  = URL.createObjectURL(blob);
+                  const a    = document.createElement("a");
+                  const date = new Date().toISOString().slice(0,10);
+                  a.href     = url;
+                  a.download = `ClassPulse_${course.name.replace(/[\s.]/g,"_")}_${date}.csv`;
+                  document.body.appendChild(a); a.click();
+                  document.body.removeChild(a); URL.revokeObjectURL(url);
+                }}>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:600 }}>{course.name}</div>
+                    <div style={{ fontSize:12, color:C.textDim }}>{courseObs.length} Einträge · {course.students.length} Schüler</div>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, color:C.accent, fontSize:13, fontWeight:600 }}>
+                    <Icon name="download" size={15} color={C.accent} /> .csv
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Gesamt-Export */}
+            <div style={{ ...S.sectionLbl, marginTop:20 }}>Alle Kurse zusammen</div>
+            <button style={S.btn("primary")} onClick={() => {
+              const lines = ["ClassPulse Export \u2014 " + new Date().toLocaleDateString("de-DE")];
+              courses.filter(c => c.criteriaType !== "none").forEach(course => {
+                const criteria = getCriteria(course.name);
+                lines.push(`\r\n=== ${course.name} ===`);
+                lines.push(`Name;${criteria.map(c => c.short).join(";")};HA-Quote;Fehltage;Gesamt`);
+                course.students.forEach(st => {
+                  const obs = observations.filter(o => o.course === course.name && o.studentId === st.id);
+                  const critSummary = criteria.map(crit => {
+                    const pos = obs.filter(o => o.criterionId === crit.id && o.rating === "+").length;
+                    const neg = obs.filter(o => o.criterionId === crit.id && o.rating === "-").length;
+                    return (pos === 0 && neg === 0) ? "-" : `+${pos}/-${neg}`;
+                  });
+                  let hwTotal = 0, hwDone = 0;
+                  Object.entries(homework).forEach(([key, val]) => {
+                    if (key.includes(`_${course.name}`)) {
+                      hwTotal++;
+                      const status = val[st.id];
+                      if (status === undefined || status === "done") hwDone++;
+                      else if (status === "half") hwDone += 0.5;
+                    }
+                  });
+                  const hwPct = hwTotal > 0 ? `${Math.round((hwDone/hwTotal)*100)}%` : "-";
+                  let absentCount = 0;
+                  Object.entries(absences).forEach(([key, ids]) => {
+                    if (key.includes(`_${course.name}`) && ids.includes(st.id)) absentCount++;
+                  });
+                  lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${absentCount};${obs.length}`);
+                });
+              });
+              const csv  = "\uFEFF" + lines.join("\r\n");
+              const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
+              const url  = URL.createObjectURL(blob);
+              const a    = document.createElement("a");
+              const date = new Date().toISOString().slice(0,10);
+              a.href     = url;
+              a.download = `ClassPulse_Alle_Kurse_${date}.csv`;
+              document.body.appendChild(a); a.click();
+              document.body.removeChild(a); URL.revokeObjectURL(url);
+            }}>
+              <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                <Icon name="download" size={16} color="#fff" /> Alle Kurse herunterladen
+              </span>
+            </button>
+
+            <button style={{ ...S.btn("ghost"), marginTop:8 }} onClick={() => setShowExport(false)}>Schließen</button>
           </div>
         </div>
       )}
 
-      {/* Undo toast — sits above bottom nav */}
+      {/* Undo toast — kompakt, eine Zeile, über Nav */}
       {lastAction && (
         <div style={{
           position:"fixed",
-          bottom:`calc(72px + env(safe-area-inset-bottom))`,
+          bottom:`calc(66px + env(safe-area-inset-bottom))`,
           left:12, right:12,
-          background:C.card,
+          background:"rgba(26,29,39,0.96)",
           border:`1px solid ${C.accent}`,
-          borderRadius:12,
-          padding:"12px 14px",
+          borderRadius:10,
+          padding:"8px 10px 8px 14px",
           display:"flex",
           alignItems:"center",
           justifyContent:"space-between",
-          gap:12,
+          gap:8,
           zIndex:150,
-          boxShadow:"0 8px 24px rgba(0,0,0,0.4)",
-          animation:"none",
+          boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
         }}>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.05em" }}>EINGETRAGEN</div>
-            <div style={{ fontSize:13, fontWeight:600, color:C.text, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+          <div style={{ flex:1, minWidth:0, display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ fontSize:11, color:C.accent, fontWeight:700, flexShrink:0 }}>✓</span>
+            <span style={{ fontSize:12, fontWeight:500, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
               {lastAction.description}
-            </div>
+            </span>
           </div>
           <button
             onClick={performUndo}
             style={{
-              background:C.accent, color:"#fff", border:"none",
-              borderRadius:8, padding:"9px 16px", fontSize:13, fontWeight:700,
+              background:"transparent", color:C.accent, border:`1px solid ${C.accent}`,
+              borderRadius:7, padding:"5px 12px", fontSize:12, fontWeight:700,
               cursor:"pointer", WebkitAppearance:"none", flexShrink:0,
             }}>
-            ↶ Rückgängig
+            ↶ Undo
           </button>
         </div>
       )}
