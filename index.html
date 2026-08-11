@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ClassPulse" />
+  <meta name="theme-color" content="#0f1117" />
+  <title>ClassPulse — Participation Tracker</title>
+  <link rel="manifest" href="manifest.json" />
+  <!-- Apple Touch Icons -->
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; background: #0f1117; color: #E4E4E7; font-family: 'Inter', 'SF Pro Display', system-ui, sans-serif; }
+    #root { height: 100%; }
+    /* Safe area padding for notch/home-indicator */
+    .safe-top    { padding-top: max(16px, env(safe-area-inset-top)); }
+    .safe-bottom { padding-bottom: max(80px, calc(60px + env(safe-area-inset-bottom))); }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+// ─── DATA ────────────────────────────────────────────────────────────────────
+
+const SCHEDULE = [
+  { day: 1, start: "08:00", end: "09:30", course: "8a Englisch",         type: "double" },
+  { day: 1, start: "09:50", end: "10:35", course: "8a Klassenrat",       type: "single" },
+  { day: 1, start: "11:35", end: "13:05", course: "11P Social Studies",  type: "double" },
+  { day: 1, start: "13:20", end: "14:50", course: "9c Social Studies",   type: "double" },
+  { day: 2, start: "08:00", end: "09:30", course: "Jg10 Social Studies", type: "double" },
+  { day: 3, start: "08:00", end: "09:30", course: "12. Kl. Englisch",    type: "double" },
+  { day: 3, start: "09:50", end: "11:20", course: "11P Social Studies",  type: "double" },
+  { day: 3, start: "11:35", end: "12:20", course: "9c Social Studies",   type: "single" },
+  { day: 4, start: "09:50", end: "11:20", course: "8a History",          type: "double" },
+  { day: 4, start: "11:35", end: "12:20", course: "8a Englisch",         type: "single" },
+  { day: 4, start: "13:20", end: "14:50", course: "11P WiE",             type: "double" },
+  { day: 5, start: "09:50", end: "11:20", course: "12. Kl. Englisch",    type: "double" },
+  { day: 5, start: "11:35", end: "13:05", course: "Jg10 History",        type: "double" },
+  { day: 5, start: "13:20", end: "14:50", course: "12. Kl. WiE",        type: "double" },
+];
+
+const DAYS = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
+
+const ENGLISH_COURSES = ["8a Englisch", "12. Kl. Englisch"];
+
+const FREMDSPRACHEN_CRITERIA = [
+  { id:"fs1", short:"Beteiligung",     full:"beteiligt sich aktiv und konzentriert am Unterrichtsgeschehen", area:"Engagement" },
+  { id:"fs2", short:"Beiträge",        full:"äußert inhaltlich gute Beiträge, die den Unterricht voranbringen", area:"Engagement" },
+  { id:"fs3", short:"Hausaufgaben",    full:"erstellt Hausaufgaben vollständig und sorgfältig; führt Heft/Mappen übersichtlich", area:"Arbeitsverhalten" },
+  { id:"fs4", short:"Verantwortung",   full:"übernimmt Verantwortung für das Gelingen des eigenen Lernprozesses", area:"Arbeitsverhalten" },
+  { id:"fs5", short:"Vokabeln/Gram.",  full:"verwendet Vokabeln und Grammatik angemessen", area:"Sprache" },
+  { id:"fs6", short:"Sprachfluss",     full:"zeigt flüssigen Sprachfluss und korrekte Aussprache", area:"Sprache" },
+  { id:"fs7", short:"Fremdsprache",    full:"verwendet im Unterricht durchgängig die Fremdsprache", area:"Sprache" },
+  { id:"fs8", short:"Tests",           full:"zeigt in Tests regelmäßiges Lernen und Wiederholen (Tendenz)", area:"Sprache" },
+];
+
+const GENERAL_CRITERIA = [
+  { id:"gi1", short:"Sachlich richtig",    full:"Beiträge passen zur Aufgabe und sind sachlich richtig", area:"Inhalt" },
+  { id:"gi2", short:"Argumente",           full:"Argumente bauen aufeinander auf, erschließen viele Seiten", area:"Inhalt" },
+  { id:"gi3", short:"Verständnis",         full:"versteht Inhalte genau und stellt sie verständlich dar", area:"Inhalt" },
+  { id:"gi4", short:"Vorwissen",           full:"nutzt Vorwissen und verbindet es sinnvoll", area:"Inhalt" },
+  { id:"gi5", short:"Kreative Wege",       full:"nutzt eigenständige, kreative Lösungswege", area:"Inhalt" },
+  { id:"gi6", short:"Reflexion",           full:"reflektiert Ergebnisse kritisch, ordnet im Sachzusammenhang ein", area:"Inhalt" },
+  { id:"gi7", short:"Schwierige Aufgaben", full:"stellt sich auch schwierigen Aufgaben", area:"Inhalt" },
+  { id:"gi8", short:"Weiterführend",       full:"entwickelt weiterführende Fragestellungen", area:"Inhalt" },
+  { id:"gm1", short:"Bezugstexte",         full:"geht mit Bezugstexten, Medien und Material angemessen um", area:"Fachmethoden" },
+  { id:"gm2", short:"Fachmethoden",        full:"verwendet Fachmethoden angemessen", area:"Fachmethoden" },
+  { id:"gm3", short:"Werkzeuge",           full:"wählt Werkzeuge situationsgerecht aus", area:"Fachmethoden" },
+  { id:"gm4", short:"Arbeitsplanung",      full:"kann Arbeit sinnvoll planen, einteilen und durchführen", area:"Fachmethoden" },
+  { id:"gs1", short:"Fachsprache",         full:"drückt sich treffend aus, verwendet Fachsprache richtig", area:"Sprache & Komm." },
+  { id:"gs2", short:"Sprachrichtigkeit",   full:"Beiträge sind sprachlich richtig", area:"Sprache & Komm." },
+  { id:"gs3", short:"Beim Thema",          full:"bleibt beim Thema, arbeitet auf gemeinsames Ergebnis hin", area:"Sprache & Komm." },
+  { id:"gs4", short:"Gliederung",          full:"Beiträge sind sinnvoll gegliedert", area:"Sprache & Komm." },
+  { id:"gs5", short:"Andere berücks.",     full:"berücksichtigt die Beiträge von Mitschülern", area:"Sprache & Komm." },
+  { id:"gs6", short:"Gruppenarbeit",       full:"stößt Arbeitsprozesse in Gruppen an", area:"Sprache & Komm." },
+  { id:"gs7", short:"Eigene Ergebnisse",   full:"bringt eigene Arbeitsergebnisse in die Gruppe ein", area:"Sprache & Komm." },
+];
+
+const DEFAULT_STUDENTS = Array.from({ length: 25 }, (_, i) => ({
+  id: `s${i+1}`, name: `Schüler/in ${i+1}`,
+}));
+
+const COURSES_META = [
+  { name: "8a Englisch",         criteriaType: "fremdsprachen", classGroup: "8a"   },
+  { name: "8a Klassenrat",       criteriaType: "none",          classGroup: "8a"   },
+  { name: "8a History",          criteriaType: "general",       classGroup: "8a"   },
+  { name: "9c Social Studies",   criteriaType: "general",       classGroup: "9c"   },
+  { name: "11P Social Studies",  criteriaType: "general",       classGroup: "11P"  },
+  { name: "Jg10 Social Studies", criteriaType: "general",       classGroup: "Jg10" },
+  { name: "Jg10 History",        criteriaType: "general",       classGroup: "Jg10" },
+  { name: "12. Kl. Englisch",    criteriaType: "fremdsprachen", classGroup: "12Kl" },
+  { name: "11P WiE",             criteriaType: "general",       classGroup: "11P"  },
+  { name: "12. Kl. WiE",         criteriaType: "general",       classGroup: "12Kl" },
+];
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+const dateKey = (d = new Date()) => d.toISOString().slice(0,10);
+
+const loadData = (key, fallback) => {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch { return fallback; }
+};
+const saveData = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {} };
+
+const getCriteria = (courseName) =>
+  ENGLISH_COURSES.includes(courseName) ? FREMDSPRACHEN_CRITERIA : GENERAL_CRITERIA;
+
+const getCurrentSlot = () => {
+  const now = new Date();
+  const day = now.getDay();
+  const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+  return SCHEDULE.find(s => s.day === day && hhmm >= s.start && hhmm <= s.end) || null;
+};
+
+// ─── EXPORT CSV ──────────────────────────────────────────────────────────────
+
+const generateCSV = (courses, observations, homework, absences) => {
+  const lines = ["ClassPulse Export — " + new Date().toLocaleDateString("de-DE")];
+  courses.filter(c => c.criteriaType !== "none").forEach(course => {
+    const criteria = getCriteria(course.name);
+    lines.push(`\n=== ${course.name} ===`);
+    lines.push(`Name,${criteria.map(c => c.short).join(",")},HA-Quote,Fehltage,Gesamt`);
+    course.students.forEach(st => {
+      const obs = observations.filter(o => o.course === course.name && o.studentId === st.id);
+      const critSummary = criteria.map(crit => {
+        const pos = obs.filter(o => o.criterionId === crit.id && o.rating === "+").length;
+        const neg = obs.filter(o => o.criterionId === crit.id && o.rating === "-").length;
+        return (pos === 0 && neg === 0) ? "-" : `+${pos}/-${neg}`;
+      });
+      let hwTotal = 0, hwDone = 0;
+      Object.entries(homework).forEach(([key, val]) => {
+        if (key.includes(`_${course.name}`)) {
+          hwTotal++;
+          const status = val[st.id];
+          if (status === undefined || status === "done") hwDone++;
+          else if (status === "half") hwDone += 0.5;
+        }
+      });
+      const hwPct = hwTotal > 0 ? `${Math.round((hwDone/hwTotal)*100)}%` : "-";
+      let absentCount = 0;
+      Object.entries(absences).forEach(([key, ids]) => {
+        if (key.includes(`_${course.name}`) && ids.includes(st.id)) absentCount++;
+      });
+      lines.push(`"${st.name}",${critSummary.join(",")},${hwPct},${absentCount},${obs.length}`);
+    });
+  });
+  return lines.join("\n");
+};
+
+// ─── COLORS & STYLES ─────────────────────────────────────────────────────────
+
+const C = {
+  bg:         "#0f1117",
+  card:       "#1a1d27",
+  accent:     "#6C8EEF",
+  accentSoft: "rgba(108,142,239,0.12)",
+  green:      "#4ADE80",
+  greenSoft:  "rgba(74,222,128,0.12)",
+  red:        "#F87171",
+  redSoft:    "rgba(248,113,113,0.12)",
+  amber:      "#FBBF24",
+  amberSoft:  "rgba(251,191,36,0.12)",
+  text:       "#E4E4E7",
+  textDim:    "#71717A",
+  textMuted:  "#52525B",
+  border:     "#27272A",
+  surface:    "#18181B",
+};
+
+const S = {
+  app:         { minHeight:"100vh", background:C.bg, color:C.text, fontFamily:"'Inter','SF Pro Display',system-ui,sans-serif" },
+  header:      { padding:"max(16px,env(safe-area-inset-top)) 20px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between", background:C.bg, position:"sticky", top:0, zIndex:50 },
+  logo:        { fontSize:17, fontWeight:700, letterSpacing:"-0.02em" },
+  subtitle:    { fontSize:11, color:C.textDim, marginTop:2 },
+  nav:         { position:"fixed", bottom:0, left:0, right:0, background:C.card, borderTop:`1px solid ${C.border}`, display:"flex", justifyContent:"space-around", padding:`10px 0 max(14px,env(safe-area-inset-bottom))`, zIndex:100 },
+  navBtn:   a  => ({ background:"none", border:"none", color:a?C.accent:C.textDim, fontSize:10, fontWeight:a?600:400, display:"flex", flexDirection:"column", alignItems:"center", gap:3, cursor:"pointer", padding:"4px 16px", WebkitAppearance:"none" }),
+  page:        { padding:"16px 20px", paddingBottom:"100px" },
+  sectionLbl:  { fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.08em", color:C.textDim, marginBottom:8, marginTop:20 },
+  courseCard: a => ({ background:a?C.accentSoft:C.card, border:`1px solid ${a?C.accent:C.border}`, borderRadius:12, padding:"14px 16px", marginBottom:8, cursor:"pointer" }),
+  courseTitle: { fontSize:15, fontWeight:600 },
+  courseMeta:  { fontSize:12, color:C.textDim, marginTop:2 },
+  badge:    c  => ({ display:"inline-block", padding:"2px 8px", borderRadius:20, fontSize:10, fontWeight:600, background:c==="blue"?C.accentSoft:C.greenSoft, color:c==="blue"?C.accent:C.green, marginLeft:8 }),
+  btn:      v  => ({ background:v==="primary"?C.accent:v==="green"?C.green:"transparent", color:v==="primary"||v==="green"?"#fff":C.text, border:v==="ghost"?`1px solid ${C.border}`:"none", borderRadius:10, padding:"13px 20px", fontSize:14, fontWeight:600, cursor:"pointer", width:"100%", marginTop:8, WebkitAppearance:"none" }),
+  btnSm:    v  => ({ background:v==="primary"?C.accent:v==="green"?C.greenSoft:v==="red"?C.redSoft:v==="amber"?C.amberSoft:"transparent", color:v==="primary"?"#fff":v==="green"?C.green:v==="red"?C.red:v==="amber"?C.amber:C.text, border:v==="ghost"?`1px solid ${C.border}`:"none", borderRadius:8, padding:"9px 14px", fontSize:13, fontWeight:600, cursor:"pointer", WebkitAppearance:"none" }),
+  row:         { display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 14px", background:C.card, borderRadius:10, marginBottom:6, border:`1px solid ${C.border}` },
+  critCard:    { background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px", marginBottom:6 },
+  textarea:    { width:"100%", padding:"12px 14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, color:C.text, fontSize:13, outline:"none", minHeight:120, resize:"vertical", fontFamily:"inherit", boxSizing:"border-box" },
+  modal:       { position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" },
+  modalInner:  { background:C.card, borderRadius:"16px 16px 0 0", padding:"20px 20px max(24px,env(safe-area-inset-bottom))", width:"100%", maxWidth:520, maxHeight:"88vh", overflowY:"auto" },
+  statCard:    { background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 16px", flex:1, textAlign:"center" },
+};
+
+// ─── ICON ────────────────────────────────────────────────────────────────────
+
+const Icon = ({ name, size=20, color=C.textDim }) => {
+  const paths = {
+    home:     <><path d="M3 12l9-8 9 8"/><path d="M5 10v8a1 1 0 001 1h3v-5h6v5h3a1 1 0 001-1v-8"/></>,
+    users:    <><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></>,
+    chart:    <><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></>,
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></>,
+    eye:      <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
+    upload:   <><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>,
+    download: <><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>,
+    trash:    <><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></>,
+    check:    <><polyline points="20 6 9 17 4 12"/></>,
+    x:        <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {paths[name]}
+    </svg>
+  );
+};
+
+// ─── APP ─────────────────────────────────────────────────────────────────────
+
+function App() {
+  const [page,         setPage]         = useState("home");
+  const [courses,      setCourses]      = useState(() => loadData("obs_courses", COURSES_META.map(c => ({ ...c, students: [...DEFAULT_STUDENTS] }))));
+  const [observations, setObservations] = useState(() => loadData("obs_observations", []));
+  const [homework,     setHomework]     = useState(() => loadData("obs_homework", {}));
+  const [absences,     setAbsences]     = useState(() => loadData("obs_absences", {}));
+
+  const [activeCourse,  setActiveCourse]  = useState(null);
+  const [activeStudent, setActiveStudent] = useState(null);
+  const [sessionPhase,  setSessionPhase]  = useState("select");
+
+  const [todayAbsent,  setTodayAbsent]  = useState([]);
+  const [hwActive,     setHwActive]     = useState(false);
+  const [hwExceptions, setHwExceptions] = useState({});
+
+  const [noteText,    setNoteText]    = useState("");
+  const [showImport,  setShowImport]  = useState(false);
+  const [importText,  setImportText]  = useState("");
+  const [showExport,  setShowExport]  = useState(false);
+  const [copyOK,      setCopyOK]      = useState(false);
+
+  // Undo: { type, description, undo: () => void, expires: timestamp }
+  const [lastAction, setLastAction] = useState(null);
+
+  // Auto-hide undo toast after 5s
+  useEffect(() => {
+    if (!lastAction) return;
+    const t = setTimeout(() => setLastAction(null), 5000);
+    return () => clearTimeout(t);
+  }, [lastAction]);
+
+  // Helper: register an undoable action
+  const registerUndo = (description, undoFn) => {
+    setLastAction({ description, undo: undoFn, ts: Date.now() });
+  };
+
+  const performUndo = () => {
+    if (lastAction) {
+      lastAction.undo();
+      setLastAction(null);
+    }
+  };
+
+  useEffect(() => saveData("obs_courses",      courses),      [courses]);
+  useEffect(() => saveData("obs_observations", observations), [observations]);
+  useEffect(() => saveData("obs_homework",     homework),     [homework]);
+  useEffect(() => saveData("obs_absences",     absences),     [absences]);
+
+  const today       = dateKey();
+  const currentSlot = getCurrentSlot();
+
+  // ── helpers ─────────────────────────────────────────────────────────────
+
+  const getSuggested = useCallback((courseName, count=4) => {
+    const course = courses.find(c => c.name === courseName);
+    if (!course) return [];
+    const absent  = absences[`${today}_${courseName}`] || [];
+    const avail   = course.students.filter(st => !absent.includes(st.id));
+    const lastObs = {};
+    observations.filter(o => o.course === courseName).forEach(o => {
+      if (!lastObs[o.studentId] || o.date > lastObs[o.studentId]) lastObs[o.studentId] = o.date;
+    });
+    return avail.sort((a,b) => (lastObs[a.id]||"0") > (lastObs[b.id]||"0") ? 1 : -1).slice(0,count);
+  }, [courses, observations, absences, today]);
+
+  const getStats = useCallback((courseName, studentId) => {
+    const obs  = observations.filter(o => o.course === courseName && o.studentId === studentId);
+    const pos  = obs.filter(o => o.rating === "+").length;
+    const neg  = obs.filter(o => o.rating === "-").length;
+    const last = obs.reduce((m,o) => o.date > m ? o.date : m, "");
+    return { pos, neg, total:obs.length, last };
+  }, [observations]);
+
+  // ── session actions ──────────────────────────────────────────────────────
+
+  const startSession = (courseName) => {
+    setActiveCourse(courseName);
+    setTodayAbsent(absences[`${today}_${courseName}`] || []);
+    setHwActive(false);
+    setHwExceptions({});
+    setActiveStudent(null);
+    setSessionPhase("absent");
+  };
+
+  const finishAbsent = () => {
+    setAbsences(prev => ({ ...prev, [`${today}_${activeCourse}`]: todayAbsent }));
+    setSessionPhase("homework");
+  };
+
+  const activateHw = () => {
+    const course  = courses.find(c => c.name === activeCourse);
+    const present = course.students.filter(st => !todayAbsent.includes(st.id));
+    const defaults = {};
+    present.forEach(st => { defaults[st.id] = "done"; });
+    setHwExceptions(defaults);
+    setHwActive(true);
+  };
+
+  const finishHomework = () => {
+    if (hwActive) {
+      const course  = courses.find(c => c.name === activeCourse);
+      const present = course.students.filter(st => !todayAbsent.includes(st.id));
+      const record  = {};
+      present.forEach(st => { record[st.id] = hwExceptions[st.id] || "done"; });
+      setHomework(prev => ({ ...prev, [`${today}_${activeCourse}`]: record }));
+    }
+    setSessionPhase("observe");
+  };
+
+  const addObs = (studentId, criterionId, rating, note="") => {
+    const obs = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+      course: activeCourse, studentId, criterionId,
+      rating, note, date: today,
+      time: new Date().toLocaleTimeString("de-DE", { hour:"2-digit", minute:"2-digit" }),
+    };
+    setObservations(prev => [...prev, obs]);
+
+    // Build description for the toast
+    const course  = courses.find(c => c.name === activeCourse);
+    const student = course?.students.find(st => st.id === studentId);
+    const crit    = getCriteria(activeCourse).find(c => c.id === criterionId);
+    const stName  = student?.name.split(" ")[0] || "?";
+    const critLbl = crit?.short || (criterionId === "note" ? "Notiz" : criterionId);
+    const ratingSym = rating === "+" ? "+" : "−";
+    registerUndo(
+      `${stName}: ${critLbl} ${ratingSym}`,
+      () => setObservations(prev => prev.filter(o => o.id !== obs.id))
+    );
+  };
+
+  const importStudents = (courseName) => {
+    const names = importText.split("\n").map(n => n.trim()).filter(Boolean);
+    if (!names.length) return;
+    setCourses(prev => prev.map(c =>
+      c.name === courseName ? { ...c, students: names.map((name,i) => ({ id:`imp_${Date.now()}_${i}`, name })) } : c
+    ));
+    setImportText("");
+    setShowImport(false);
+  };
+
+  const goHome = () => { setActiveCourse(null); setSessionPhase("select"); setActiveStudent(null); setLastAction(null); };
+
+  // ── RENDER: HOME ─────────────────────────────────────────────────────────
+
+  const renderHome = () => {
+    const daySlots = SCHEDULE.filter(sl => sl.day === new Date().getDay());
+    return (
+      <div style={S.page}>
+        {currentSlot && (
+          <div style={{ ...S.courseCard(true), marginBottom:16 }} onClick={() => startSession(currentSlot.course)}>
+            <div style={{ fontSize:11, color:C.accent, fontWeight:700, marginBottom:4, letterSpacing:"0.06em" }}>JETZT LÄUFT</div>
+            <div style={S.courseTitle}>{currentSlot.course}</div>
+            <div style={S.courseMeta}>{currentSlot.start}–{currentSlot.end} · {currentSlot.type==="double"?"Doppelstunde":"Einzelstunde"}</div>
+            <button style={S.btn("primary")}>Stunde starten →</button>
+          </div>
+        )}
+
+        {daySlots.length > 0 && (
+          <>
+            <div style={S.sectionLbl}>Heute — {DAYS[new Date().getDay()]}</div>
+            {daySlots.filter(sl => sl !== currentSlot).map((sl,i) => (
+              <div key={i} style={S.courseCard(false)} onClick={() => startSession(sl.course)}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div>
+                    <div style={S.courseTitle}>{sl.course}</div>
+                    <div style={S.courseMeta}>{sl.start}–{sl.end} · {sl.type==="double"?"DS":"ES"}</div>
+                  </div>
+                  {ENGLISH_COURSES.includes(sl.course) && <span style={S.badge("blue")}>FS</span>}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {!currentSlot && daySlots.length === 0 && (
+          <div style={{ textAlign:"center", padding:"60px 20px", color:C.textDim }}>
+            <div style={{ fontSize:36, marginBottom:12 }}>📋</div>
+            <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>Kein Unterricht heute</div>
+            <div style={{ fontSize:13 }}>Wähle einen Kurs manuell unten aus oder schau in die Übersicht.</div>
+          </div>
+        )}
+
+        <div style={S.sectionLbl}>Alle Kurse</div>
+        {COURSES_META.filter(c => c.criteriaType !== "none").map((c,i) => (
+          <div key={i} style={S.courseCard(false)} onClick={() => startSession(c.name)}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div style={S.courseTitle}>{c.name}</div>
+              {c.criteriaType==="fremdsprachen" && <span style={S.badge("blue")}>FS</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // ── RENDER: ABSENT ───────────────────────────────────────────────────────
+
+  const renderAbsent = () => {
+    const course = courses.find(c => c.name === activeCourse);
+    if (!course) return null;
+    return (
+      <div style={S.page}>
+        <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
+        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 4px" }}>Wer fehlt heute?</h2>
+        <p style={{ fontSize:13, color:C.textDim, marginBottom:16 }}>Antippen = fehlt · nochmal = wieder da</p>
+
+        {course.students.map(st => {
+          const absent = todayAbsent.includes(st.id);
+          return (
+            <div key={st.id}
+              style={{ ...S.row, background:absent?C.redSoft:C.card, borderColor:absent?C.red:C.border, cursor:"pointer" }}
+              onClick={() => {
+                const wasAbsent = absent;
+                setTodayAbsent(prev => wasAbsent ? prev.filter(id=>id!==st.id) : [...prev, st.id]);
+                const stName = st.name.split(" ")[0];
+                registerUndo(
+                  wasAbsent ? `${stName}: wieder anwesend` : `${stName}: fehlt`,
+                  () => setTodayAbsent(prev => wasAbsent ? [...prev, st.id] : prev.filter(id=>id!==st.id))
+                );
+              }}>
+              <span style={{ fontSize:14, fontWeight:500, color:absent?C.red:C.text }}>{st.name}</span>
+              {absent && <span style={{ fontSize:12, color:C.red, fontWeight:700 }}>fehlt</span>}
+            </div>
+          );
+        })}
+
+        <div style={{ display:"flex", gap:8, marginTop:16 }}>
+          <button style={S.btn("ghost")} onClick={() => { setTodayAbsent([]); finishAbsent(); }}>Niemand fehlt</button>
+          <button style={S.btn("primary")} onClick={finishAbsent}>
+            Weiter {todayAbsent.length > 0 ? `(${todayAbsent.length} fehlt)` : "→"}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // ── RENDER: HOMEWORK ────────────────────────────────────────────────────
+
+  const renderHomework = () => {
+    const course  = courses.find(c => c.name === activeCourse);
+    if (!course) return null;
+    const present = course.students.filter(st => !todayAbsent.includes(st.id));
+    const exCount = Object.values(hwExceptions).filter(v => v !== "done").length;
+
+    return (
+      <div style={S.page}>
+        <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
+        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 4px" }}>Hausaufgaben</h2>
+
+        {!hwActive ? (
+          <>
+            <p style={{ fontSize:13, color:C.textDim, marginBottom:16 }}>Gab es Hausaufgaben auf?</p>
+            <button style={S.btn("green")} onClick={activateHw}>✓ Ja — HA kontrollieren</button>
+            <button style={S.btn("ghost")} onClick={() => setSessionPhase("observe")}>Nein — direkt zum Beobachten</button>
+          </>
+        ) : (
+          <>
+            <p style={{ fontSize:13, color:C.textDim, marginBottom:2 }}>
+              Alle auf ✓ gesetzt — nur Ausnahmen antippen.
+            </p>
+            <p style={{ fontSize:12, color:C.textMuted, marginBottom:14 }}>
+              {present.length} anwesend · {exCount} nicht/teilweise
+            </p>
+
+            {present.map(st => {
+              const status = hwExceptions[st.id] || "done";
+              const stName = st.name.split(" ")[0];
+              const setStatus = (newStatus, label) => {
+                const prevStatus = status;
+                setHwExceptions(p => ({ ...p, [st.id]: newStatus }));
+                registerUndo(
+                  `${stName}: HA ${label}`,
+                  () => setHwExceptions(p => ({ ...p, [st.id]: prevStatus }))
+                );
+              };
+              return (
+                <div key={st.id} style={{ ...S.row, borderColor:status==="not"?C.red:status==="half"?C.amber:C.border, background:status==="not"?C.redSoft:status==="half"?C.amberSoft:C.card }}>
+                  <span style={{ fontSize:14, fontWeight:500 }}>{st.name}</span>
+                  <div style={{ display:"flex", gap:4 }}>
+                    <button style={S.btnSm(status==="done"?"green":"ghost")}
+                      onClick={() => setStatus("done", "✓")}>✓</button>
+                    <button style={S.btnSm(status==="half"?"amber":"ghost")}
+                      onClick={() => setStatus(status==="half"?"done":"half", status==="half"?"✓":"½")}>½</button>
+                    <button style={S.btnSm(status==="not"?"red":"ghost")}
+                      onClick={() => setStatus(status==="not"?"done":"not", status==="not"?"✓":"✗")}>✗</button>
+                  </div>
+                </div>
+              );
+            })}
+            <button style={{ ...S.btn("primary"), marginTop:16 }} onClick={finishHomework}>Weiter →</button>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // ── RENDER: OBSERVE ─────────────────────────────────────────────────────
+
+  const renderObserve = () => {
+    const course = courses.find(c => c.name === activeCourse);
+    if (!course) return null;
+    const criteria  = getCriteria(activeCourse);
+    const suggested = getSuggested(activeCourse, 4);
+    const absentIds = absences[`${today}_${activeCourse}`] || [];
+    const available = course.students.filter(st => !absentIds.includes(st.id));
+
+    // ── Detail view ──
+    if (activeStudent) {
+      const student  = course.students.find(st => st.id === activeStudent);
+      const todayObs = observations.filter(o => o.course === activeCourse && o.studentId === activeStudent && o.date === today);
+      const areas    = [...new Set(criteria.map(c => c.area))];
+
+      return (
+        <div style={S.page}>
+          <button style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", padding:0, marginBottom:12 }}
+            onClick={() => setActiveStudent(null)}>← Zurück</button>
+          <h2 style={{ fontSize:20, fontWeight:700, margin:"0 0 2px" }}>{student?.name}</h2>
+          <p style={{ fontSize:12, color:C.textDim, marginBottom:16 }}>
+            {activeCourse} · Heute: {todayObs.filter(o=>o.criterionId!=="note").length} Kriterien
+          </p>
+
+          {areas.map(area => (
+            <div key={area}>
+              <div style={S.sectionLbl}>{area}</div>
+              {criteria.filter(c => c.area === area).map(crit => {
+                const last = [...observations]
+                  .filter(o => o.course === activeCourse && o.studentId === activeStudent && o.criterionId === crit.id)
+                  .sort((a,b) => b.date.localeCompare(a.date))[0];
+                const todayEntry = todayObs.find(o => o.criterionId === crit.id);
+                return (
+                  <div key={crit.id} style={{ ...S.critCard, borderColor:todayEntry?(todayEntry.rating==="+"?C.green:C.red):C.border }}>
+                    <div style={{ fontSize:13, fontWeight:600 }}>{crit.short}</div>
+                    <div style={{ fontSize:11, color:C.textDim, marginTop:2, marginBottom:8 }}>{crit.full}</div>
+                    <div style={{ display:"flex", gap:6 }}>
+                      <button style={S.btnSm(todayEntry?.rating==="+"?"green":"ghost")}
+                        onClick={() => addObs(activeStudent, crit.id, "+")}>+ gut</button>
+                      <button style={S.btnSm(todayEntry?.rating==="-"?"red":"ghost")}
+                        onClick={() => addObs(activeStudent, crit.id, "-")}>− schwach</button>
+                    </div>
+                    {last && last.date !== today && (
+                      <div style={{ fontSize:10, color:C.textMuted, marginTop:6 }}>
+                        Letztes Mal {last.date}: {last.rating==="+"?"gut":"schwach"}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+
+          <div style={{ ...S.sectionLbl, marginTop:20 }}>Freie Notiz (optional)</div>
+          <div style={{ display:"flex", gap:8 }}>
+            <input
+              style={{ flex:1, padding:"11px 12px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, outline:"none" }}
+              placeholder="Kurze Notiz…"
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+            />
+            <button style={S.btnSm("primary")} onClick={() => {
+              if (noteText.trim()) { addObs(activeStudent, "note", "+", noteText.trim()); setNoteText(""); }
+            }}>+</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── List view ──
+    return (
+      <div style={S.page}>
+        <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
+        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 16px" }}>Wen beobachten?</h2>
+
+        {suggested.length > 0 && (
+          <>
+            <div style={S.sectionLbl}>Vorschlag — am längsten nicht beobachtet</div>
+            {suggested.map(st => {
+              const stats = getStats(activeCourse, st.id);
+              return (
+                <div key={st.id} style={{ ...S.courseCard(true), cursor:"pointer" }} onClick={() => setActiveStudent(st.id)}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div style={{ fontSize:15, fontWeight:600 }}>{st.name}</div>
+                    <div style={{ fontSize:11, color:C.textDim }}>{stats.last || "noch nie"}</div>
+                  </div>
+                  {stats.total > 0 && (
+                    <div style={{ fontSize:12, color:C.textDim, marginTop:2 }}>
+                      <span style={{ color:C.green }}>+{stats.pos}</span> / <span style={{ color:C.red }}>−{stats.neg}</span> insgesamt
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )}
+
+        <div style={S.sectionLbl}>Alle anwesenden ({available.length})</div>
+        {available.map(st => {
+          const stats = getStats(activeCourse, st.id);
+          return (
+            <div key={st.id} style={{ ...S.row, cursor:"pointer" }} onClick={() => setActiveStudent(st.id)}>
+              <span style={{ fontSize:14, fontWeight:500 }}>{st.name}</span>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                {stats.total > 0 && (
+                  <span style={{ fontSize:11, color:C.textDim }}>
+                    <span style={{ color:C.green }}>+{stats.pos}</span>/<span style={{ color:C.red }}>−{stats.neg}</span>
+                  </span>
+                )}
+                <Icon name="eye" size={16} color={C.textDim} />
+              </div>
+            </div>
+          );
+        })}
+
+        <button style={{ ...S.btn("ghost"), marginTop:20 }} onClick={goHome}>✓ Stunde beenden</button>
+      </div>
+    );
+  };
+
+  // ── RENDER: STUDENTS tab ─────────────────────────────────────────────────
+
+  const renderStudents = () => (
+    <div style={S.page}>
+      <h2 style={{ fontSize:20, fontWeight:700, margin:"0 0 16px" }}>Kurse & Schülerlisten</h2>
+      {courses.filter(c => c.criteriaType !== "none").map(course => (
+        <div key={course.name} style={{ marginBottom:24 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+            <div>
+              <div style={{ fontSize:15, fontWeight:600 }}>{course.name}</div>
+              <div style={{ fontSize:12, color:C.textDim }}>
+                {course.students.length} Schüler · {course.criteriaType==="fremdsprachen"?"FS-Bogen":"Allg. Bogen"}
+              </div>
+            </div>
+            <button style={{ ...S.btnSm("primary"), display:"flex", alignItems:"center", gap:4, flexShrink:0 }}
+              onClick={() => { setActiveCourse(course.name); setImportText(""); setShowImport(true); }}>
+              <Icon name="upload" size={13} color="#fff" /> Import
+            </button>
+          </div>
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 14px" }}>
+            {course.students.slice(0,5).map(st => (
+              <div key={st.id} style={{ fontSize:13, color:C.textDim, lineHeight:"1.9" }}>{st.name}</div>
+            ))}
+            {course.students.length > 5 && (
+              <div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>+{course.students.length-5} weitere</div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // ── RENDER: OVERVIEW tab ─────────────────────────────────────────────────
+
+  const renderOverview = () => {
+    const totalObs  = observations.filter(o => o.criterionId !== "note").length;
+    const thisWeek  = observations.filter(o => {
+      const diff = (new Date() - new Date(o.date)) / (1000*60*60*24);
+      return diff <= 7;
+    }).length;
+    const totalCourses = courses.filter(c => c.criteriaType !== "none").length;
+
+    return (
+      <div style={S.page}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <h2 style={{ fontSize:20, fontWeight:700, margin:0 }}>Übersicht</h2>
+          <button style={{ ...S.btnSm("primary"), display:"flex", alignItems:"center", gap:4 }}
+            onClick={() => { setShowExport(true); setCopyOK(false); }}>
+            <Icon name="download" size={13} color="#fff" /> Export
+          </button>
+        </div>
+
+        <div style={{ display:"flex", gap:8, marginBottom:20 }}>
+          <div style={S.statCard}>
+            <div style={{ fontSize:24, fontWeight:700 }}>{totalObs}</div>
+            <div style={{ fontSize:11, color:C.textDim, marginTop:2 }}>Beobachtungen</div>
+          </div>
+          <div style={S.statCard}>
+            <div style={{ fontSize:24, fontWeight:700 }}>{thisWeek}</div>
+            <div style={{ fontSize:11, color:C.textDim, marginTop:2 }}>Diese Woche</div>
+          </div>
+          <div style={S.statCard}>
+            <div style={{ fontSize:24, fontWeight:700 }}>{totalCourses}</div>
+            <div style={{ fontSize:11, color:C.textDim, marginTop:2 }}>Kurse</div>
+          </div>
+        </div>
+
+        <div style={S.sectionLbl}>Pro Kurs</div>
+        {courses.filter(c => c.criteriaType !== "none").map(course => {
+          const cObs    = observations.filter(o => o.course === course.name);
+          const stCount = new Set(cObs.map(o => o.studentId)).size;
+          return (
+            <div key={course.name} style={{ ...S.courseCard(false), cursor:"default" }}>
+              <div style={{ display:"flex", justifyContent:"space-between" }}>
+                <div style={S.courseTitle}>{course.name}</div>
+                <div style={{ fontSize:13, fontWeight:700, color:C.accent }}>{cObs.length}</div>
+              </div>
+              <div style={S.courseMeta}>{stCount} / {course.students.length} Schüler beobachtet</div>
+            </div>
+          );
+        })}
+
+        <div style={S.sectionLbl}>Letzte 10 Einträge</div>
+        {observations.length === 0 && (
+          <div style={{ textAlign:"center", padding:"32px 0", color:C.textDim, fontSize:13 }}>
+            Noch keine Einträge — starte eine Stunde!
+          </div>
+        )}
+        {[...observations].reverse().slice(0,10).map(obs => {
+          const course  = courses.find(c => c.name === obs.course);
+          const student = course?.students.find(st => st.id === obs.studentId);
+          const crit    = getCriteria(obs.course).find(c => c.id === obs.criterionId);
+          return (
+            <div key={obs.id} style={{ ...S.row, flexDirection:"column", alignItems:"flex-start", gap:3 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", width:"100%" }}>
+                <span style={{ fontSize:13, fontWeight:600 }}>{student?.name || "?"}</span>
+                <span style={{ fontSize:10, color:C.textDim }}>{obs.date} {obs.time}</span>
+              </div>
+              <div style={{ fontSize:12, color:C.textDim }}>
+                {obs.course} · {crit?.short || (obs.criterionId==="note"?"Notiz":obs.criterionId)} ·{" "}
+                <span style={{ color:obs.rating==="+"?C.green:C.red, fontWeight:600 }}>
+                  {obs.rating==="+"?"gut":"schwach"}
+                </span>
+                {obs.note && <span style={{ color:C.textMuted }}> — {obs.note}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // ── RENDER: SETTINGS tab ─────────────────────────────────────────────────
+
+  const renderSettings = () => (
+    <div style={S.page}>
+      <h2 style={{ fontSize:20, fontWeight:700, margin:"0 0 16px" }}>Einstellungen</h2>
+
+      <div style={S.sectionLbl}>Export</div>
+      <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
+        onClick={() => { setShowExport(true); setCopyOK(false); }}>
+        <Icon name="download" size={16} color={C.textDim} /> CSV exportieren
+      </button>
+
+      <div style={{ ...S.sectionLbl, marginTop:24 }}>Daten zurücksetzen</div>
+      <button style={{ ...S.btn("ghost"), borderColor:C.red, color:C.red }}
+        onClick={() => {
+          if (window.confirm("Wirklich ALLE Daten löschen? Dies kann nicht rückgängig gemacht werden.")) {
+            ["obs_courses","obs_observations","obs_homework","obs_absences"].forEach(k => localStorage.removeItem(k));
+            window.location.reload();
+          }
+        }}>
+        <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+          <Icon name="trash" size={16} color={C.red} /> Alle Daten löschen
+        </span>
+      </button>
+
+      <div style={{ ...S.sectionLbl, marginTop:24 }}>Info</div>
+      <div style={{ fontSize:12, color:C.textDim, lineHeight:"1.9", background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
+        <strong style={{ color:C.text }}>ClassPulse — Participation Tracker v1.0</strong><br/>
+        Daten lokal auf diesem Gerät (localStorage).<br/>
+        Kein Server · kein Login · kein Tracking.<br/><br/>
+        <strong style={{ color:C.text }}>Bewertungsbögen:</strong><br/>
+        Englisch (8a, 12. Kl.) → Fremdsprachen-Bogen (8 Kriterien)<br/>
+        Alle anderen Fächer → Allg. Grootmoor-Bogen (19 Kriterien)<br/><br/>
+        <strong style={{ color:C.text }}>Gewichtung:</strong><br/>
+        60% sonstige Leistungen / 40% schriftlich
+      </div>
+
+      <div style={{ ...S.sectionLbl, marginTop:24 }}>PWA-Installation (iPad)</div>
+      <div style={{ fontSize:12, color:C.textDim, lineHeight:"1.9", background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
+        Safari öffnen → Teilen-Symbol (□↑) → „Zum Home-Bildschirm" → Hinzufügen.<br/>
+        App läuft dann vollbildig und offline.
+      </div>
+    </div>
+  );
+
+  // ── RENDER: IMPORT MODAL ─────────────────────────────────────────────────
+
+  const renderImportModal = () => (
+    <div style={S.modal} onClick={() => setShowImport(false)}>
+      <div style={S.modalInner} onClick={e => e.stopPropagation()}>
+        <h3 style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>Schülerliste importieren</h3>
+        <p style={{ fontSize:13, color:C.textDim, marginBottom:12 }}>
+          {activeCourse} — ein Name pro Zeile (aus IServ kopieren)
+        </p>
+        <textarea style={S.textarea} value={importText} onChange={e => setImportText(e.target.value)}
+          placeholder={"Max Mustermann\nErika Musterfrau\nAli Yilmaz\n…"} autoFocus />
+        <div style={{ fontSize:12, color:C.textDim, marginTop:6, marginBottom:12 }}>
+          {importText.split("\n").filter(l=>l.trim()).length} Namen erkannt
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button style={S.btn("ghost")} onClick={() => setShowImport(false)}>Abbrechen</button>
+          <button style={S.btn("primary")} onClick={() => importStudents(activeCourse)}>
+            Importieren
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── SESSION ROUTER ───────────────────────────────────────────────────────
+
+  const renderSession = () => {
+    if (!activeCourse) return renderHome();
+    switch(sessionPhase) {
+      case "absent":   return renderAbsent();
+      case "homework": return renderHomework();
+      case "observe":  return renderObserve();
+      default:         return renderHome();
+    }
+  };
+
+  // ── LAYOUT ───────────────────────────────────────────────────────────────
+
+  return (
+    <div style={S.app}>
+      {/* Header */}
+      <div style={S.header}>
+        <div>
+          <div style={S.logo}>ClassPulse</div>
+          <div style={S.subtitle}>
+            {DAYS[new Date().getDay()]} · {new Date().toLocaleDateString("de-DE")}
+            {activeCourse && sessionPhase !== "select" && ` · ${activeCourse}`}
+          </div>
+        </div>
+        {activeCourse && sessionPhase !== "select" && (
+          <button style={{ background:"none", border:"none", color:C.textDim, cursor:"pointer", padding:"4px 8px", fontSize:13 }}
+            onClick={goHome}>✕</button>
+        )}
+      </div>
+
+      {/* Page content */}
+      {page==="home"     ? renderSession()  :
+       page==="students" ? renderStudents() :
+       page==="overview" ? renderOverview() :
+       renderSettings()}
+
+      {/* Import modal */}
+      {showImport && renderImportModal()}
+
+      {/* Export modal */}
+      {showExport && (
+        <div style={S.modal} onClick={() => setShowExport(false)}>
+          <div style={S.modalInner} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>CSV-Export</h3>
+            <p style={{ fontSize:13, color:C.textDim, marginBottom:12 }}>
+              In Zwischenablage kopieren → in Excel/Numbers einfügen.
+            </p>
+            <textarea style={{ ...S.textarea, minHeight:180, fontSize:11, fontFamily:"monospace" }}
+              readOnly value={generateCSV(courses, observations, homework, absences)}
+              onFocus={e => e.target.select()} />
+            <div style={{ display:"flex", gap:8, marginTop:12 }}>
+              <button style={S.btn("ghost")} onClick={() => setShowExport(false)}>Schließen</button>
+              <button style={S.btn(copyOK?"green":"primary")} onClick={() => {
+                const csv = generateCSV(courses, observations, homework, absences);
+                if (navigator.clipboard) {
+                  navigator.clipboard.writeText(csv).then(() => { setCopyOK(true); setTimeout(()=>setCopyOK(false),2500); });
+                } else {
+                  // iOS Safari fallback
+                  const ta = document.createElement("textarea");
+                  ta.value = csv; ta.style.position="fixed"; ta.style.opacity="0";
+                  document.body.appendChild(ta); ta.focus(); ta.select();
+                  document.execCommand("copy"); document.body.removeChild(ta);
+                  setCopyOK(true); setTimeout(()=>setCopyOK(false),2500);
+                }
+              }}>{copyOK ? "✓ Kopiert!" : "Kopieren"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Undo toast — sits above bottom nav */}
+      {lastAction && (
+        <div style={{
+          position:"fixed",
+          bottom:`calc(72px + env(safe-area-inset-bottom))`,
+          left:12, right:12,
+          background:C.card,
+          border:`1px solid ${C.accent}`,
+          borderRadius:12,
+          padding:"12px 14px",
+          display:"flex",
+          alignItems:"center",
+          justifyContent:"space-between",
+          gap:12,
+          zIndex:150,
+          boxShadow:"0 8px 24px rgba(0,0,0,0.4)",
+          animation:"none",
+        }}>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.05em" }}>EINGETRAGEN</div>
+            <div style={{ fontSize:13, fontWeight:600, color:C.text, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              {lastAction.description}
+            </div>
+          </div>
+          <button
+            onClick={performUndo}
+            style={{
+              background:C.accent, color:"#fff", border:"none",
+              borderRadius:8, padding:"9px 16px", fontSize:13, fontWeight:700,
+              cursor:"pointer", WebkitAppearance:"none", flexShrink:0,
+            }}>
+            ↶ Rückgängig
+          </button>
+        </div>
+      )}
+
+      {/* Bottom nav */}
+      <div style={S.nav}>
+        {[
+          { id:"home",     icon:"home",     label:"Stunde" },
+          { id:"students", icon:"users",    label:"Kurse"  },
+          { id:"overview", icon:"chart",    label:"Stats"  },
+          { id:"settings", icon:"settings", label:"Mehr"   },
+        ].map(tab => (
+          <button key={tab.id} style={S.navBtn(page===tab.id)}
+            onClick={() => { setPage(tab.id); goHome(); }}>
+            <Icon name={tab.icon} size={22} color={page===tab.id?C.accent:C.textDim} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(React.createElement(App));
+</script>
+
+<script>
+// ─── SERVICE WORKER REGISTRATION ────────────────────────────────────────────
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js")
+      .then(reg => console.log("SW registered:", reg.scope))
+      .catch(err => console.warn("SW registration failed:", err));
+  });
+}
+</script>
+</body>
+</html>
