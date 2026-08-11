@@ -1151,6 +1151,24 @@ function App() {
         60% sonstige Leistungen / 40% schriftlich
       </div>
 
+      <div style={{ ...S.sectionLbl, marginTop:24 }}>PDF-Export für Gespräche</div>
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
+        <div style={{ fontSize:12, color:C.text, fontWeight:600, marginBottom:6 }}>
+          Schöne Schüler-PDFs zum Halbjahr:
+        </div>
+        <div style={{ fontSize:12, color:C.textDim, lineHeight:"2" }}>
+          1. Hier: „Backup herunterladen" → .json Datei<br/>
+          2. GitHub Repo: CLASSPULSE_PDF_RULES.md herunterladen<br/>
+          3. Claude Momentum-Chat öffnen<br/>
+          4. Beide Dateien hochladen<br/>
+          5. Schreiben: „Erstell mir die ClassPulse PDF-Exports"<br/>
+          6. PDF herunterladen — fertig
+        </div>
+        <div style={{ fontSize:11, color:C.textMuted, marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+          GitHub: glowgiver/classpulse · classpulse_export.py + CLASSPULSE_PDF_RULES.md
+        </div>
+      </div>
+
       <div style={{ ...S.sectionLbl, marginTop:24 }}>PWA-Installation (iPad)</div>
       <div style={{ fontSize:12, color:C.textDim, lineHeight:"1.9", background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
         Safari öffnen → Teilen-Symbol (□↑) → „Zum Home-Bildschirm" → Hinzufügen.<br/>
