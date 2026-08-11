@@ -692,25 +692,72 @@ function App() {
           <h2 style={{ fontSize:22, fontWeight:700, margin:"0 0 2px" }}>{student?.name}</h2>
           <p style={{ fontSize:12, color:C.textDim, marginBottom:8 }}>{activeCourse}</p>
 
-          {/* Notenvorschlag wenn genug Daten */}
+          {/* Zwischenstand / Notenvorschlag */}
           {(() => {
             const grade = getGradeProposal(activeCourse, activeStudent);
             const prog  = getObsProgress(activeCourse, activeStudent);
+            const criteria = getCriteria(activeCourse);
+
+            // Tendenz pro Kriterium berechnen
+            const critTendencies = criteria.map(crit => {
+              const critObs = observations.filter(o =>
+                o.course === activeCourse && o.studentId === activeStudent && o.criterionId === crit.id
+              );
+              const pos = critObs.filter(o => o.rating === "+").length;
+              const neg = critObs.filter(o => o.rating === "-").length;
+              const total = pos + neg;
+              if (total === 0) return { crit, label: null, color: C.textMuted };
+              const ratio = pos / total;
+              if (ratio >= 0.70) return { crit, label: "überwiegend positiv",  color: C.green };
+              if (ratio >= 0.45) return { crit, label: "ausgeglichen",          color: C.amber };
+              return                   { crit, label: "überwiegend schwach",   color: C.red   };
+            }).filter(t => t.label !== null);
+
+            // Vollständiger Notenvorschlag
             if (grade) return (
-              <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:10, padding:"10px 14px", marginBottom:16 }}>
-                <div style={{ fontSize:10, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:2 }}>NOTENVORSCHLAG</div>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:10, padding:"12px 14px", marginBottom:16 }}>
+                <div style={{ fontSize:10, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:6 }}>NOTENVORSCHLAG</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
                   <span style={{ fontSize:16, fontWeight:700, color:grade.color }}>Note {grade.grade}</span>
                   <span style={{ fontSize:11, color:C.textDim }}>{grade.label}</span>
                 </div>
-                <div style={{ fontSize:10, color:C.textMuted, marginTop:4 }}>
-                  Basierend auf {prog.count} Einträgen / {prog.days} Tagen · Pädagogische Einschätzung entscheidet.
+                {critTendencies.map(t => (
+                  <div key={t.crit.id} style={{ display:"flex", justifyContent:"space-between", paddingTop:3 }}>
+                    <span style={{ fontSize:11, color:C.textDim }}>{t.crit.short}</span>
+                    <span style={{ fontSize:11, fontWeight:600, color:t.color }}>{t.label}</span>
+                  </div>
+                ))}
+                <div style={{ fontSize:10, color:C.textMuted, marginTop:8, paddingTop:6, borderTop:`1px solid ${C.border}` }}>
+                  {prog.count} Einträge / {prog.days} Tage · Pädagogische Einschätzung entscheidet.
                 </div>
               </div>
             );
+
+            // Vorläufige Tendenz ab 1 Eintrag
+            if (prog.count > 0) return (
+              <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px", marginBottom:16 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                  <div style={{ fontSize:10, color:C.textDim, fontWeight:700, letterSpacing:"0.06em" }}>ZWISCHENSTAND</div>
+                  <div style={{ fontSize:10, color:C.amber }}>⚠ {prog.count} Eintr. / {prog.days} Tage — vorläufig</div>
+                </div>
+                {critTendencies.length > 0 ? critTendencies.map(t => (
+                  <div key={t.crit.id} style={{ display:"flex", justifyContent:"space-between", paddingTop:3 }}>
+                    <span style={{ fontSize:11, color:C.textDim }}>{t.crit.short}</span>
+                    <span style={{ fontSize:11, fontWeight:600, color:t.color }}>{t.label}</span>
+                  </div>
+                )) : (
+                  <div style={{ fontSize:11, color:C.textMuted }}>Noch keine Kriterien bewertet.</div>
+                )}
+                <div style={{ fontSize:10, color:C.textMuted, marginTop:6 }}>
+                  Notenvorschlag ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} Tagen.
+                </div>
+              </div>
+            );
+
+            // Noch gar keine Einträge
             return (
               <div style={{ fontSize:11, color:C.textMuted, marginBottom:16 }}>
-                Noch kein Vorschlag — {Math.max(0, MIN_ENTRIES-prog.count)} Einträge und {Math.max(0, MIN_DAYS-prog.days)} weitere Tage nötig.
+                Noch keine Einträge für diesen Schüler.
               </div>
             );
           })()}
@@ -783,8 +830,26 @@ function App() {
             );
           })}
 
-          {/* Notiz */}
-          <div style={{ ...S.sectionLbl, marginTop:4 }}>Freie Notiz (optional)</div>
+          {/* Notiz-Verlauf */}
+          {(() => {
+            const pastNotes = [...observations]
+              .filter(o => o.course === activeCourse && o.studentId === activeStudent && o.criterionId === "note")
+              .sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+            if (pastNotes.length === 0) return null;
+            return (
+              <div style={{ marginBottom:8 }}>
+                <div style={S.sectionLbl}>Bisherige Notizen ({pastNotes.length})</div>
+                {pastNotes.map(n => (
+                  <div key={n.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8, padding:"8px 12px", background:C.surface, borderRadius:8, marginBottom:5, borderLeft:`3px solid ${C.teal||C.accent}` }}>
+                    <span style={{ fontSize:12, color:C.text, flex:1, lineHeight:"1.5" }}>{n.note}</span>
+                    <span style={{ fontSize:10, color:C.textMuted, flexShrink:0, marginTop:1 }}>{n.date}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          <div style={{ ...S.sectionLbl, marginTop:4 }}>Neue Notiz (optional)</div>
           <div style={{ display:"flex", gap:8 }}>
             <input
               style={{ flex:1, padding:"11px 12px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, outline:"none" }}
