@@ -53,37 +53,95 @@ const DAYS = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","S
 
 const ENGLISH_COURSES = ["8a Englisch", "12. Kl. Englisch"];
 
+// ── Fremdsprachen: 8 Kriterien exakt aus Grootmoor-Bogen ──
 const FREMDSPRACHEN_CRITERIA = [
-  { id:"fs1", short:"Beteiligung",     full:"beteiligt sich aktiv und konzentriert am Unterrichtsgeschehen", area:"Engagement" },
-  { id:"fs2", short:"Beiträge",        full:"äußert inhaltlich gute Beiträge, die den Unterricht voranbringen", area:"Engagement" },
-  { id:"fs3", short:"Hausaufgaben",    full:"erstellt Hausaufgaben vollständig und sorgfältig; führt Heft/Mappen übersichtlich", area:"Arbeitsverhalten" },
-  { id:"fs4", short:"Verantwortung",   full:"übernimmt Verantwortung für das Gelingen des eigenen Lernprozesses", area:"Arbeitsverhalten" },
-  { id:"fs5", short:"Vokabeln/Gram.",  full:"verwendet Vokabeln und Grammatik angemessen", area:"Sprache" },
-  { id:"fs6", short:"Sprachfluss",     full:"zeigt flüssigen Sprachfluss und korrekte Aussprache", area:"Sprache" },
-  { id:"fs7", short:"Fremdsprache",    full:"verwendet im Unterricht durchgängig die Fremdsprache", area:"Sprache" },
-  { id:"fs8", short:"Tests",           full:"zeigt in Tests regelmäßiges Lernen und Wiederholen (Tendenz)", area:"Sprache" },
+  {
+    id:"fs1", short:"Beteiligung", area:"Engagement",
+    full:"Beteiligt sich aktiv und konzentriert am Unterrichtsgeschehen.",
+    examples:["Meldet sich regelmäßig", "Ist aufmerksam dabei", "Arbeitet aktiv in Phasen mit"],
+  },
+  {
+    id:"fs2", short:"Beiträge", area:"Engagement",
+    full:"Äußert inhaltlich gute Beiträge, die den Unterricht voranbringen.",
+    examples:["Bringt neue Ideen ein", "Baut sinnvoll auf anderen auf", "Kommt auf den Punkt"],
+  },
+  {
+    id:"fs3", short:"Hausaufgaben", area:"Arbeitsverhalten",
+    full:"Erstellt Hausaufgaben vollständig und sorgfältig; führt Heft/Mappen übersichtlich.",
+    examples:["HA vollständig da", "Heft ordentlich geführt", "Vorbereitung sichtbar"],
+  },
+  {
+    id:"fs4", short:"Verantwortung", area:"Arbeitsverhalten",
+    full:"Übernimmt Verantwortung für den eigenen Lern- und Arbeitsprozess, hält sich an Regeln.",
+    examples:["Arbeitet selbstständig", "Hält Regeln ein", "Motiviert auch in Gruppenarbeit"],
+  },
+  {
+    id:"fs5", short:"Vokabeln/Gram.", area:"Sprache",
+    full:"Verwendet Vokabeln und Grammatik angemessen.",
+    examples:["Trifft die richtigen Wörter", "Grammatik weitgehend korrekt", "Variierter Wortschatz"],
+  },
+  {
+    id:"fs6", short:"Sprachfluss", area:"Sprache",
+    full:"Zeigt in mündlichen Phasen flüssigen Sprachfluss und korrekte Aussprache.",
+    examples:["Spricht ohne lange Pausen", "Aussprache verständlich", "Formuliert flüssig"],
+  },
+  {
+    id:"fs7", short:"Fremdsprache", area:"Sprache",
+    full:"Verwendet im Unterricht durchgängig die Fremdsprache.",
+    examples:["Spricht kein Deutsch", "Korrigiert sich selbst auf Englisch", "Auch bei Schwierigkeiten auf Englisch"],
+  },
+  {
+    id:"fs8", short:"Tests", area:"Sprache",
+    full:"Zeigt in Vokabel- und Grammatiktests, dass er/sie regelmäßig lernt.",
+    examples:["Testergebnisse als Tendenz", "Regelmäßiges Lernen erkennbar", "Nur Tendenz +/− eintragen"],
+  },
 ];
 
+// ── Allgemein: 8 Kriterien (3/2/3) aus Grootmoor-Bogen ──
 const GENERAL_CRITERIA = [
-  { id:"gi1", short:"Sachlich richtig",    full:"Beiträge passen zur Aufgabe und sind sachlich richtig", area:"Inhalt" },
-  { id:"gi2", short:"Argumente",           full:"Argumente bauen aufeinander auf, erschließen viele Seiten", area:"Inhalt" },
-  { id:"gi3", short:"Verständnis",         full:"versteht Inhalte genau und stellt sie verständlich dar", area:"Inhalt" },
-  { id:"gi4", short:"Vorwissen",           full:"nutzt Vorwissen und verbindet es sinnvoll", area:"Inhalt" },
-  { id:"gi5", short:"Kreative Wege",       full:"nutzt eigenständige, kreative Lösungswege", area:"Inhalt" },
-  { id:"gi6", short:"Reflexion",           full:"reflektiert Ergebnisse kritisch, ordnet im Sachzusammenhang ein", area:"Inhalt" },
-  { id:"gi7", short:"Schwierige Aufgaben", full:"stellt sich auch schwierigen Aufgaben", area:"Inhalt" },
-  { id:"gi8", short:"Weiterführend",       full:"entwickelt weiterführende Fragestellungen", area:"Inhalt" },
-  { id:"gm1", short:"Bezugstexte",         full:"geht mit Bezugstexten, Medien und Material angemessen um", area:"Fachmethoden" },
-  { id:"gm2", short:"Fachmethoden",        full:"verwendet Fachmethoden angemessen", area:"Fachmethoden" },
-  { id:"gm3", short:"Werkzeuge",           full:"wählt Werkzeuge situationsgerecht aus", area:"Fachmethoden" },
-  { id:"gm4", short:"Arbeitsplanung",      full:"kann Arbeit sinnvoll planen, einteilen und durchführen", area:"Fachmethoden" },
-  { id:"gs1", short:"Fachsprache",         full:"drückt sich treffend aus, verwendet Fachsprache richtig", area:"Sprache & Komm." },
-  { id:"gs2", short:"Sprachrichtigkeit",   full:"Beiträge sind sprachlich richtig", area:"Sprache & Komm." },
-  { id:"gs3", short:"Beim Thema",          full:"bleibt beim Thema, arbeitet auf gemeinsames Ergebnis hin", area:"Sprache & Komm." },
-  { id:"gs4", short:"Gliederung",          full:"Beiträge sind sinnvoll gegliedert", area:"Sprache & Komm." },
-  { id:"gs5", short:"Andere berücks.",     full:"berücksichtigt die Beiträge von Mitschülern", area:"Sprache & Komm." },
-  { id:"gs6", short:"Gruppenarbeit",       full:"stößt Arbeitsprozesse in Gruppen an", area:"Sprache & Komm." },
-  { id:"gs7", short:"Eigene Ergebnisse",   full:"bringt eigene Arbeitsergebnisse in die Gruppe ein", area:"Sprache & Komm." },
+  // INHALT (3)
+  {
+    id:"gi1", short:"Sachlich richtig", area:"Inhalt",
+    full:"Beiträge passen zur Aufgabe und sind sachlich richtig.",
+    examples:["Fakten stimmen", "Bleibt beim Thema", "Kein inhaltlicher Fehler"],
+  },
+  {
+    id:"gi2", short:"Argumente", area:"Inhalt",
+    full:"Argumente bauen sinnvoll aufeinander auf und erschließen viele Seiten eines Problems.",
+    examples:["Pro & Contra berücksichtigt", "Belegt seine Aussagen", "Denkt über den ersten Punkt hinaus"],
+  },
+  {
+    id:"gi3", short:"Reflexion", area:"Inhalt",
+    full:"Reflektiert Ergebnisse kritisch und ordnet sie im Sachzusammenhang ein.",
+    examples:["'Das stimmt, aber...'", "Vergleicht mit Vorwissen", "Hinterfragt eigene Aussagen am Stundenende"],
+  },
+  // FACHMETHODEN (2)
+  {
+    id:"gm1", short:"Bezugstexte", area:"Fachmethoden",
+    full:"Geht mit Bezugstexten, Medien und Material angemessen und sinnvoll um.",
+    examples:["Zitiert korrekt aus dem Text", "Nutzt Karte/Grafik richtig", "Belegt Aussagen mit Material"],
+  },
+  {
+    id:"gm2", short:"Arbeitsplanung", area:"Fachmethoden",
+    full:"Kann Arbeit sinnvoll planen, einteilen und durchführen.",
+    examples:["Fängt sofort an in Gruppenarbeit", "Teilt Aufgaben sinnvoll auf", "Kommt zum Ergebnis in der Zeit"],
+  },
+  // SPRACHE & KOMMUNIKATION (3)
+  {
+    id:"gs1", short:"Fachsprache", area:"Sprache & Komm.",
+    full:"Drückt sich treffend und differenziert aus und verwendet die Fachsprache richtig.",
+    examples:["Nutzt Fachbegriffe korrekt", "Formuliert präzise", "Kein 'irgendwie' oder 'halt'"],
+  },
+  {
+    id:"gs2", short:"Sprachrichtigkeit", area:"Sprache & Komm.",
+    full:"Beiträge sind sprachlich richtig und strukturiert.",
+    examples:["Vollständige Sätze", "Klarer Satzbau", "Verständlich formuliert"],
+  },
+  {
+    id:"gs3", short:"Auf andere eingehen", area:"Sprache & Komm.",
+    full:"Berücksichtigt Beiträge von Mitschülern; bringt Gruppe voran.",
+    examples:["'Ich ergänze, was X gesagt hat...'", "Greift Ideen anderer auf", "Hilft der Gruppe weiterzukommen"],
+  },
 ];
 
 const DEFAULT_STUDENTS = Array.from({ length: 25 }, (_, i) => ({
@@ -245,6 +303,7 @@ function App() {
   const [importText,  setImportText]  = useState("");
   const [showExport,  setShowExport]  = useState(false);
   const [copyOK,      setCopyOK]      = useState(false);
+  const [infoCrit,    setInfoCrit]    = useState(null); // Kriterium für Info-Modal
 
   // Undo: { type, description, undo: () => void, expires: timestamp }
   const [lastAction, setLastAction] = useState(null);
@@ -578,43 +637,43 @@ function App() {
                         flexDirection:"column",
                         gap:8,
                       }}>
-                        {/* Kurzname */}
-                        <div style={{
-                          fontSize:12,
-                          fontWeight:700,
-                          color: isPos ? C.green : isNeg ? C.red : C.text,
-                          lineHeight:"1.3",
-                        }}>{crit.short}</div>
+                        {/* Kurzname + ⓘ */}
+                        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:4 }}>
+                          <div style={{
+                            fontSize:12, fontWeight:700,
+                            color: isPos ? C.green : isNeg ? C.red : C.text,
+                            lineHeight:"1.3", flex:1,
+                          }}>{crit.short}</div>
+                          <button
+                            onClick={() => setInfoCrit(crit)}
+                            style={{
+                              background:"none", border:"none", cursor:"pointer",
+                              color:C.textMuted, fontSize:13, padding:"0 0 0 2px",
+                              lineHeight:1, flexShrink:0, WebkitAppearance:"none",
+                            }}>ⓘ</button>
+                        </div>
 
                         {/* + / − Buttons */}
                         <div style={{ display:"flex", gap:5 }}>
                           <button
                             onClick={() => addObs(activeStudent, crit.id, "+")}
                             style={{
-                              flex:1,
-                              padding:"7px 0",
+                              flex:1, padding:"8px 0",
                               background: isPos ? C.green : "transparent",
                               color: isPos ? "#fff" : C.green,
                               border: `1px solid ${C.green}`,
-                              borderRadius:7,
-                              fontSize:15,
-                              fontWeight:700,
-                              cursor:"pointer",
-                              WebkitAppearance:"none",
+                              borderRadius:7, fontSize:16, fontWeight:700,
+                              cursor:"pointer", WebkitAppearance:"none",
                             }}>+</button>
                           <button
                             onClick={() => addObs(activeStudent, crit.id, "-")}
                             style={{
-                              flex:1,
-                              padding:"7px 0",
+                              flex:1, padding:"8px 0",
                               background: isNeg ? C.red : "transparent",
                               color: isNeg ? "#fff" : C.red,
                               border: `1px solid ${C.red}`,
-                              borderRadius:7,
-                              fontSize:15,
-                              fontWeight:700,
-                              cursor:"pointer",
-                              WebkitAppearance:"none",
+                              borderRadius:7, fontSize:16, fontWeight:700,
+                              cursor:"pointer", WebkitAppearance:"none",
                             }}>−</button>
                         </div>
                       </div>
@@ -848,7 +907,7 @@ function App() {
         Kein Server · kein Login · kein Tracking.<br/><br/>
         <strong style={{ color:C.text }}>Bewertungsbögen:</strong><br/>
         Englisch (8a, 12. Kl.) → Fremdsprachen-Bogen (8 Kriterien)<br/>
-        Alle anderen Fächer → Allg. Grootmoor-Bogen (19 Kriterien)<br/><br/>
+        Alle anderen Fächer → Allg. Grootmoor-Bogen (8 Kriterien, 3/2/3)<br/><br/>
         <strong style={{ color:C.text }}>Gewichtung:</strong><br/>
         60% sonstige Leistungen / 40% schriftlich
       </div>
@@ -1036,6 +1095,41 @@ function App() {
             </button>
 
             <button style={{ ...S.btn("ghost"), marginTop:8 }} onClick={() => setShowExport(false)}>Schließen</button>
+          </div>
+        </div>
+      )}
+
+      {/* Kriterien Info-Modal */}
+      {infoCrit && (
+        <div style={S.modal} onClick={() => setInfoCrit(null)}>
+          <div style={S.modalInner} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:6 }}>
+              {infoCrit.area}
+            </div>
+            <h3 style={{ fontSize:18, fontWeight:700, marginBottom:8 }}>{infoCrit.short}</h3>
+            <p style={{ fontSize:13, color:C.textDim, lineHeight:"1.6", marginBottom:16 }}>
+              {infoCrit.full}
+            </p>
+            {infoCrit.examples && (
+              <>
+                <div style={{ fontSize:11, fontWeight:700, color:C.textDim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>
+                  Beispiele im Unterricht
+                </div>
+                {infoCrit.examples.map((ex, i) => (
+                  <div key={i} style={{
+                    display:"flex", alignItems:"flex-start", gap:8,
+                    padding:"8px 12px", background:C.surface, borderRadius:8,
+                    marginBottom:6, fontSize:13, color:C.text, lineHeight:"1.4",
+                  }}>
+                    <span style={{ color:C.accent, fontWeight:700, flexShrink:0 }}>→</span>
+                    <span>{ex}</span>
+                  </div>
+                ))}
+              </>
+            )}
+            <button style={{ ...S.btn("ghost"), marginTop:12 }} onClick={() => setInfoCrit(null)}>
+              Schließen
+            </button>
           </div>
         </div>
       )}
