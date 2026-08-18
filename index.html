@@ -308,6 +308,13 @@ function App() {
   const [backupImportOK,setBackupImportOK]= useState(false);
   const [backupError,   setBackupError]  = useState("");
 
+  const [editingStudentKey, setEditingStudentKey] = useState(null);
+  const [editStudentValue,  setEditStudentValue]  = useState("");
+  const [addingToCourse,    setAddingToCourse]    = useState(null);
+  const [addStudentValue,   setAddStudentValue]   = useState("");
+  const [confirmRemoveKey,  setConfirmRemoveKey]  = useState(null);
+  const studentKey = (courseName, studentId) => `${courseName}::${studentId}`;
+
   // Undo: { type, description, undo: () => void, expires: timestamp }
   const [lastAction, setLastAction] = useState(null);
 
@@ -426,6 +433,32 @@ function App() {
     ));
     setImportText("");
     setShowImport(false);
+  };
+
+  const renameStudent = (courseName, studentId, newName) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setCourses(prev => prev.map(c =>
+      c.name === courseName
+        ? { ...c, students: c.students.map(st => st.id === studentId ? { ...st, name: trimmed } : st) }
+        : c
+    ));
+  };
+
+  const addStudent = (courseName, name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setCourses(prev => prev.map(c =>
+      c.name === courseName
+        ? { ...c, students: [...c.students, { id: `s_${Date.now()}_${Math.random().toString(36).slice(2,7)}`, name: trimmed }] }
+        : c
+    ));
+  };
+
+  const removeStudent = (courseName, studentId) => {
+    setCourses(prev => prev.map(c =>
+      c.name === courseName ? { ...c, students: c.students.filter(st => st.id !== studentId) } : c
+    ));
   };
 
   const goHome = () => { setActiveCourse(null); setSessionPhase("select"); setActiveStudent(null); setLastAction(null); };
@@ -946,12 +979,68 @@ function App() {
               <Icon name="upload" size={13} color="#fff" /> Import
             </button>
           </div>
-          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 14px" }}>
-            {course.students.slice(0,5).map(st => (
-              <div key={st.id} style={{ fontSize:13, color:C.textDim, lineHeight:"1.9" }}>{st.name}</div>
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"4px 10px" }}>
+            {course.students.map(st => (
+              <div key={st.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
+                {editingStudentKey === studentKey(course.name, st.id) ? (
+                  <input
+                    autoFocus
+                    value={editStudentValue}
+                    onChange={e => setEditStudentValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") { renameStudent(course.name, st.id, editStudentValue); setEditingStudentKey(null); }
+                      if (e.key === "Escape") setEditingStudentKey(null);
+                    }}
+                    onBlur={() => { renameStudent(course.name, st.id, editStudentValue); setEditingStudentKey(null); }}
+                    style={{ flex:1, fontSize:13, padding:"5px 7px", background:C.surface, border:`1px solid ${C.accent}`, borderRadius:6, color:C.text, outline:"none" }}
+                  />
+                ) : (
+                  <span style={{ fontSize:13, color:C.textDim, flex:1, cursor:"pointer" }}
+                    onClick={() => { setEditingStudentKey(studentKey(course.name, st.id)); setEditStudentValue(st.name); }}>{st.name}</span>
+                )}
+                {confirmRemoveKey === studentKey(course.name, st.id) ? (
+                  <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                    <button style={{ ...S.btnSm("red"), padding:"5px 9px" }}
+                      onClick={() => { removeStudent(course.name, st.id); setConfirmRemoveKey(null); }}>
+                      <Icon name="check" size={12} color={C.red} />
+                    </button>
+                    <button style={{ ...S.btnSm("ghost"), padding:"5px 9px" }} onClick={() => setConfirmRemoveKey(null)}>
+                      <Icon name="x" size={12} color={C.textDim} />
+                    </button>
+                  </div>
+                ) : (
+                  <button style={{ background:"none", border:"none", cursor:"pointer", padding:4, flexShrink:0, WebkitAppearance:"none" }}
+                    onClick={() => setConfirmRemoveKey(studentKey(course.name, st.id))}>
+                    <Icon name="trash" size={14} color={C.textMuted} />
+                  </button>
+                )}
+              </div>
             ))}
-            {course.students.length > 5 && (
-              <div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>+{course.students.length-5} weitere</div>
+            {addingToCourse === course.name ? (
+              <div style={{ display:"flex", gap:6, padding:"8px 0" }}>
+                <input
+                  autoFocus
+                  placeholder="Vorname Nachname"
+                  value={addStudentValue}
+                  onChange={e => setAddStudentValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") { addStudent(course.name, addStudentValue); setAddStudentValue(""); }
+                    if (e.key === "Escape") { setAddingToCourse(null); setAddStudentValue(""); }
+                  }}
+                  style={{ flex:1, fontSize:13, padding:"7px 9px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, color:C.text, outline:"none" }}
+                />
+                <button style={S.btnSm("primary")} onClick={() => { addStudent(course.name, addStudentValue); setAddStudentValue(""); }}>
+                  <Icon name="check" size={13} color="#fff" />
+                </button>
+                <button style={S.btnSm("ghost")} onClick={() => { setAddingToCourse(null); setAddStudentValue(""); }}>
+                  <Icon name="x" size={13} color={C.textDim} />
+                </button>
+              </div>
+            ) : (
+              <button style={{ background:"none", border:"none", color:C.accent, fontSize:12, fontWeight:600, padding:"9px 0", cursor:"pointer", WebkitAppearance:"none" }}
+                onClick={() => { setAddingToCourse(course.name); setAddStudentValue(""); }}>
+                + Schüler hinzufügen
+              </button>
             )}
           </div>
         </div>
