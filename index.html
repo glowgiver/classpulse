@@ -198,17 +198,20 @@ const generateCSV = (courses, observations, homework, absences) => {
       });
       let hwTotal = 0, hwDone = 0;
       Object.entries(homework).forEach(([key, val]) => {
-        if (key.includes(`_${course.name}`)) {
-          hwTotal++;
+        if (key.endsWith(`_${course.name}`)) {
           const status = val[st.id];
-          if (status === undefined || status === "done") hwDone++;
+          // No record = absent, or not yet in the course. Counting that as "done"
+          // handed absent students a free 100%.
+          if (status === undefined) return;
+          hwTotal++;
+          if (status === "done") hwDone++;
           else if (status === "half") hwDone += 0.5;
         }
       });
       const hwPct = hwTotal > 0 ? `${Math.round((hwDone/hwTotal)*100)}%` : "-";
       let absentCount = 0;
       Object.entries(absences).forEach(([key, ids]) => {
-        if (key.includes(`_${course.name}`) && ids.includes(st.id)) absentCount++;
+        if (key.endsWith(`_${course.name}`) && ids.includes(st.id)) absentCount++;
       });
       lines.push(`"${st.name}",${critSummary.join(",")},${hwPct},${absentCount},${obs.length}`);
     });
@@ -290,13 +293,20 @@ function App() {
   const [homework,     setHomework]     = useState(() => loadData("obs_homework", {}));
   const [absences,     setAbsences]     = useState(() => loadData("obs_absences", {}));
 
-  const [activeCourse,  setActiveCourse]  = useState(null);
-  const [activeStudent, setActiveStudent] = useState(null);
-  const [sessionPhase,  setSessionPhase]  = useState("select");
+  // A locked phone or an app switch discards the page, so the running session is
+  // restored from storage — but only if it is from today.
+  const [restored] = useState(() => {
+    const s = loadData("obs_session", null);
+    return s && s.date === dateKey() && s.activeCourse ? s : null;
+  });
 
-  const [todayAbsent,  setTodayAbsent]  = useState([]);
-  const [hwActive,     setHwActive]     = useState(false);
-  const [hwExceptions, setHwExceptions] = useState({});
+  const [activeCourse,  setActiveCourse]  = useState(restored?.activeCourse ?? null);
+  const [activeStudent, setActiveStudent] = useState(null);  // land on the list, not inside a student
+  const [sessionPhase,  setSessionPhase]  = useState(restored?.sessionPhase ?? "select");
+
+  const [todayAbsent,  setTodayAbsent]  = useState(restored?.todayAbsent  ?? []);
+  const [hwActive,     setHwActive]     = useState(restored?.hwActive     ?? false);
+  const [hwExceptions, setHwExceptions] = useState(restored?.hwExceptions ?? {});
 
   const [noteText,      setNoteText]      = useState("");
   const [showImport,    setShowImport]    = useState(false);
@@ -316,14 +326,15 @@ function App() {
   const studentKey = (courseName, studentId) => `${courseName}::${studentId}`;
 
   const [lastAutoBackup, setLastAutoBackup] = useState(() => localStorage.getItem("obs_lastAutoBackup"));
+  const [backupDue,      setBackupDue]      = useState(false);
 
   // Undo: { type, description, undo: () => void, expires: timestamp }
   const [lastAction, setLastAction] = useState(null);
 
-  // Auto-hide undo toast after 5s
+  // Auto-hide undo toast. Long enough to survive a glance back at the class.
   useEffect(() => {
     if (!lastAction) return;
-    const t = setTimeout(() => setLastAction(null), 5000);
+    const t = setTimeout(() => setLastAction(null), 12000);
     return () => clearTimeout(t);
   }, [lastAction]);
 
@@ -344,6 +355,14 @@ function App() {
   useEffect(() => saveData("obs_homework",     homework),     [homework]);
   useEffect(() => saveData("obs_absences",     absences),     [absences]);
 
+  // Keep the running session recoverable; clear it once the lesson is ended.
+  useEffect(() => {
+    if (!activeCourse) { try { localStorage.removeItem("obs_session"); } catch(e) {} return; }
+    saveData("obs_session", {
+      date: dateKey(), activeCourse, sessionPhase, todayAbsent, hwActive, hwExceptions,
+    });
+  }, [activeCourse, sessionPhase, todayAbsent, hwActive, hwExceptions]);
+
   // Automatische Sicherung: löst beim Öffnen der App aus, wenn seit dem letzten
   // Auto-Backup ein zufälliges Intervall (4–7 Tage) verstrichen ist. Eigene
   // Dateinamen-Vorsilbe ("AutoBackup" statt "Backup"), damit System- und
@@ -353,15 +372,20 @@ function App() {
     const last     = localStorage.getItem("obs_lastAutoBackup");
     const dueDays  = Number(localStorage.getItem("obs_nextAutoBackupDays")) || 4;
     const daysSince = last ? (Date.now() - new Date(last).getTime()) / 86400000 : Infinity;
-    if (daysSince >= dueDays) {
-      downloadBackup("ClassPulse_AutoBackup");
-      const nextDays = 4 + Math.floor(Math.random() * 4); // 4–7 Tage, bewusst unregelmäßig
-      const now = new Date().toISOString();
-      localStorage.setItem("obs_lastAutoBackup", now);
-      localStorage.setItem("obs_nextAutoBackupDays", String(nextDays));
-      setLastAutoBackup(now);
-    }
+    setBackupDue(daysSince >= dueDays);
   }, []);
+
+  // iOS Safari drops downloads that no tap initiated, so the backup cannot fire
+  // by itself — stamping "saved" on an attempt would be a lie. Prompt instead,
+  // and only record the date once a real tap produced the file.
+  const runDueBackup = () => {
+    downloadBackup("ClassPulse_AutoBackup");
+    const now = new Date().toISOString();
+    localStorage.setItem("obs_lastAutoBackup", now);
+    localStorage.setItem("obs_nextAutoBackupDays", String(4 + Math.floor(Math.random() * 4)));
+    setLastAutoBackup(now);
+    setBackupDue(false);
+  };
 
   const today       = dateKey();
   const currentSlot = getCurrentSlot();
@@ -377,11 +401,19 @@ function App() {
     observations.filter(o => o.course === courseName).forEach(o => {
       if (!lastObs[o.studentId] || o.date > lastObs[o.studentId]) lastObs[o.studentId] = o.date;
     });
-    return avail.sort((a,b) => (lastObs[a.id]||"0") > (lastObs[b.id]||"0") ? 1 : -1).slice(0,count);
+    // Longest-unobserved first; never observed ("") sorts to the very front.
+    // Equal dates must return 0 — returning -1 there reverses the whole list,
+    // which silently favoured students at the end of the roster.
+    return avail.sort((a,b) => {
+      const la = lastObs[a.id] || "", lb = lastObs[b.id] || "";
+      return la < lb ? -1 : la > lb ? 1 : 0;
+    }).slice(0,count);
   }, [courses, observations, absences, today]);
 
   const getStats = useCallback((courseName, studentId) => {
-    const obs  = observations.filter(o => o.course === courseName && o.studentId === studentId);
+    // Notes are stored with rating "+" — they must never count as a positive.
+    const obs  = observations.filter(o =>
+      o.course === courseName && o.studentId === studentId && o.criterionId !== "note");
     const pos  = obs.filter(o => o.rating === "+").length;
     const neg  = obs.filter(o => o.rating === "-").length;
     const last = obs.reduce((m,o) => o.date > m ? o.date : m, "");
@@ -407,8 +439,11 @@ function App() {
   const activateHw = () => {
     const course  = courses.find(c => c.name === activeCourse);
     const present = course.students.filter(st => !todayAbsent.includes(st.id));
+    // Re-entering the homework phase (e.g. after an interruption) must not wipe
+    // exceptions already recorded for today.
+    const recorded = homework[`${today}_${activeCourse}`] || {};
     const defaults = {};
-    present.forEach(st => { defaults[st.id] = "done"; });
+    present.forEach(st => { defaults[st.id] = recorded[st.id] || "done"; });
     setHwExceptions(defaults);
     setHwActive(true);
   };
@@ -425,14 +460,6 @@ function App() {
   };
 
   const addObs = (studentId, criterionId, rating, note="") => {
-    const obs = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
-      course: activeCourse, studentId, criterionId,
-      rating, note, date: today,
-      time: new Date().toLocaleTimeString("de-DE", { hour:"2-digit", minute:"2-digit" }),
-    };
-    setObservations(prev => [...prev, obs]);
-
     // Build description for the toast
     const course  = courses.find(c => c.name === activeCourse);
     const student = course?.students.find(st => st.id === studentId);
@@ -440,6 +467,43 @@ function App() {
     const stName  = student?.name.split(" ")[0] || "?";
     const critLbl = crit?.short || (criterionId === "note" ? "Notiz" : criterionId);
     const ratingSym = rating === "+" ? "+" : "−";
+    const now = () => new Date().toLocaleTimeString("de-DE", { hour:"2-digit", minute:"2-digit" });
+
+    // Notes accumulate; a criterion holds at most one rating per student per day.
+    // Same sign again takes it back, opposite sign replaces it — so what the tile
+    // shows always matches what the grade proposal counts.
+    const existing = criterionId === "note" ? null : observations.find(o =>
+      o.course === activeCourse && o.studentId === studentId &&
+      o.criterionId === criterionId && o.date === today
+    );
+
+    if (existing && existing.rating === rating) {
+      setObservations(prev => prev.filter(o => o.id !== existing.id));
+      registerUndo(
+        `${stName}: ${critLbl} ${ratingSym} zurückgenommen`,
+        () => setObservations(prev => [...prev, existing])
+      );
+      return;
+    }
+
+    if (existing) {
+      setObservations(prev => prev.map(o =>
+        o.id === existing.id ? { ...o, rating, time: now() } : o
+      ));
+      registerUndo(
+        `${stName}: ${critLbl} → ${ratingSym}`,
+        () => setObservations(prev => prev.map(o => o.id === existing.id ? existing : o))
+      );
+      return;
+    }
+
+    const obs = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+      course: activeCourse, studentId, criterionId,
+      rating, note, date: today,
+      time: now(),
+    };
+    setObservations(prev => [...prev, obs]);
     registerUndo(
       `${stName}: ${critLbl} ${ratingSym}`,
       () => setObservations(prev => prev.filter(o => o.id !== obs.id))
@@ -449,6 +513,16 @@ function App() {
   const importStudents = (courseName) => {
     const names = importText.split("\n").map(n => n.trim()).filter(Boolean);
     if (!names.length) return;
+    // A bulk import regenerates every student id, so observations recorded for
+    // this course lose the student they belong to. Single names can be corrected
+    // in the roster instead — say so before wiping a term's worth of entries.
+    const affected = observations.filter(o => o.course === courseName).length;
+    if (affected > 0 && !window.confirm(
+      `${courseName}: ${names.length} Namen importieren?\n\n` +
+      `Achtung: ${affected} bereits erfasste Einträge in diesem Kurs verlieren dadurch ihre Zuordnung ` +
+      `und tauchen nirgends mehr auf.\n\n` +
+      `Nur einzelne Namen korrigieren? Abbrechen und stattdessen den Namen in der Liste antippen.`
+    )) return;
     setCourses(prev => prev.map(c =>
       c.name === courseName ? { ...c, students: names.map((name,i) => ({ id:`imp_${Date.now()}_${i}`, name })) } : c
     ));
@@ -510,9 +584,22 @@ function App() {
     reader.onload = (e) => {
       try {
         const backup = JSON.parse(e.target.result);
-        if (!backup.data || !backup.app === "ClassPulse") throw new Error("Ungültiges Format");
+        // `!backup.app === "ClassPulse"` compared a boolean to a string and was
+        // therefore always false — the check never ran.
+        if (!backup.data || backup.app !== "ClassPulse") throw new Error("Das ist keine ClassPulse-Backup-Datei");
         const { courses: c, observations: o, homework: h, absences: a } = backup.data;
-        if (!c || !o || !h || !a) throw new Error("Daten unvollständig");
+        if (!Array.isArray(c) || !Array.isArray(o) ||
+            !h || typeof h !== "object" || !a || typeof a !== "object")
+          throw new Error("Daten unvollständig oder beschädigt");
+
+        // Overwriting is irreversible and costs a whole term — always ask first.
+        const stamp = (backup.exportDate || "").slice(0,10);
+        const ok = window.confirm(
+          `Backup${stamp ? " vom " + stamp : ""} einspielen?\n\n` +
+          `${c.length} Kurse · ${o.length} Beobachtungen\n\n` +
+          `Alle aktuellen Daten auf diesem Gerät werden dadurch ersetzt.`
+        );
+        if (!ok) return;
         setCourses(c);
         setObservations(o);
         setHomework(h);
@@ -565,6 +652,18 @@ function App() {
     const daySlots = SCHEDULE.filter(sl => sl.day === new Date().getDay());
     return (
       <div style={S.page}>
+        {backupDue && (
+          <div style={{ background:C.amberSoft, border:`1px solid ${C.amber}`, borderRadius:12, padding:"12px 14px", marginBottom:12, cursor:"pointer" }}
+            onClick={runDueBackup}>
+            <div style={{ fontSize:13, fontWeight:600, color:C.amber, marginBottom:2 }}>Sicherung fällig</div>
+            <div style={{ fontSize:12, color:C.textDim }}>
+              Tippen lädt die Backup-Datei herunter{lastAutoBackup
+                ? ` — zuletzt vor ${Math.floor((Date.now()-new Date(lastAutoBackup).getTime())/86400000)} Tagen`
+                : ""}.
+            </div>
+          </div>
+        )}
+
         {currentSlot && (
           <div style={{ ...S.courseCard(true), marginBottom:16 }} onClick={() => startSession(currentSlot.course)}>
             <div style={{ fontSize:11, color:C.accent, fontWeight:700, marginBottom:4, letterSpacing:"0.06em" }}>JETZT LÄUFT</div>
@@ -1112,7 +1211,7 @@ function App() {
           const stCount = new Set(cObs.map(o => o.studentId)).size;
           const readyCount = course.students.filter(st => getObsProgress(course.name, st.id).ready).length;
           const totalSt = course.students.length;
-          const pct = Math.round((readyCount / totalSt) * 100);
+          const pct = totalSt > 0 ? Math.round((readyCount / totalSt) * 100) : 0;
 
           return (
             <div key={course.name} style={{ ...S.courseCard(false), cursor:"default", marginBottom:16 }}>
@@ -1208,9 +1307,9 @@ function App() {
           Einmal pro Woche sichern — schützt vor Datenverlust bei App-Updates oder Browser-Cache-Löschung.
         </div>
         <div style={{ fontSize:11, color:C.textDim, marginBottom:12 }}>
-          Automatische Sicherung: {lastAutoBackup
-            ? `zuletzt ${Math.floor((Date.now()-new Date(lastAutoBackup).getTime())/86400000)} Tag(e) her — lädt "ClassPulse_AutoBackup_…" beim Öffnen der App herunter, sobald wieder fällig`
-            : "noch keine — läuft automatisch, sobald Beobachtungen erfasst wurden"}
+          Sicherungs-Erinnerung: {lastAutoBackup
+            ? `zuletzt vor ${Math.floor((Date.now()-new Date(lastAutoBackup).getTime())/86400000)} Tag(en) — alle 4–7 Tage erscheint auf der Startseite ein Hinweis zum Antippen`
+            : "erscheint auf der Startseite, sobald Beobachtungen erfasst sind"}
         </div>
         <button style={{ ...S.btn("primary"), marginTop:0 }} onClick={exportBackup}>
           <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
@@ -1386,17 +1485,18 @@ function App() {
                     });
                     let hwTotal = 0, hwDone = 0;
                     Object.entries(homework).forEach(([key, val]) => {
-                      if (key.includes(`_${course.name}`)) {
-                        hwTotal++;
+                      if (key.endsWith(`_${course.name}`)) {
                         const status = val[st.id];
-                        if (status === undefined || status === "done") hwDone++;
+                        if (status === undefined) return;  // absent, or not yet in the course
+                        hwTotal++;
+                        if (status === "done") hwDone++;
                         else if (status === "half") hwDone += 0.5;
                       }
                     });
                     const hwPct = hwTotal > 0 ? `${Math.round((hwDone/hwTotal)*100)}%` : "-";
                     let absentCount = 0;
                     Object.entries(absences).forEach(([key, ids]) => {
-                      if (key.includes(`_${course.name}`) && ids.includes(st.id)) absentCount++;
+                      if (key.endsWith(`_${course.name}`) && ids.includes(st.id)) absentCount++;
                     });
                     lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${absentCount};${obs.length}`);
                   });
@@ -1438,17 +1538,18 @@ function App() {
                   });
                   let hwTotal = 0, hwDone = 0;
                   Object.entries(homework).forEach(([key, val]) => {
-                    if (key.includes(`_${course.name}`)) {
-                      hwTotal++;
+                    if (key.endsWith(`_${course.name}`)) {
                       const status = val[st.id];
-                      if (status === undefined || status === "done") hwDone++;
+                      if (status === undefined) return;  // absent, or not yet in the course
+                      hwTotal++;
+                      if (status === "done") hwDone++;
                       else if (status === "half") hwDone += 0.5;
                     }
                   });
                   const hwPct = hwTotal > 0 ? `${Math.round((hwDone/hwTotal)*100)}%` : "-";
                   let absentCount = 0;
                   Object.entries(absences).forEach(([key, ids]) => {
-                    if (key.includes(`_${course.name}`) && ids.includes(st.id)) absentCount++;
+                    if (key.endsWith(`_${course.name}`) && ids.includes(st.id)) absentCount++;
                   });
                   lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${absentCount};${obs.length}`);
                 });
@@ -1552,7 +1653,7 @@ function App() {
           { id:"settings", icon:"settings", label:"Mehr"   },
         ].map(tab => (
           <button key={tab.id} style={S.navBtn(page===tab.id)}
-            onClick={() => { setPage(tab.id); goHome(); }}>
+            onClick={() => setPage(tab.id)}>
             <Icon name={tab.icon} size={22} color={page===tab.id?C.accent:C.textDim} />
             {tab.label}
           </button>
