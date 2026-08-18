@@ -156,7 +156,6 @@ Disclaimer immer: „Pädagogische Einschätzung der Lehrkraft entscheidet."
 | Kurs               | Typ           | Klasse |
 |--------------------|---------------|--------|
 | 8a Englisch        | fremdsprachen | 8a     |
-| 8a Klassenrat      | none          | 8a     |
 | Jg8 History        | general       | Jg8    |
 | Jg9 Social Studies | general       | Jg9    |
 | 11P Social Studies | general       | 11P    |

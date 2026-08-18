@@ -60,7 +60,6 @@ const { useState, useEffect, useCallback } = React;
 
 const SCHEDULE = [
   { day: 1, start: "08:00", end: "09:30", course: "8a Englisch",         type: "double" },
-  { day: 1, start: "09:50", end: "10:35", course: "8a Klassenrat",       type: "single" },
   { day: 1, start: "11:35", end: "13:05", course: "11P Social Studies",  type: "double" },
   { day: 1, start: "13:20", end: "14:50", course: "Jg9 Social Studies",  type: "double" },
   { day: 2, start: "08:00", end: "09:30", course: "Jg10 Social Studies", type: "double" },
@@ -176,7 +175,6 @@ const DEFAULT_STUDENTS = Array.from({ length: 25 }, (_, i) => ({
 
 const COURSES_META = [
   { name: "8a Englisch",         criteriaType: "fremdsprachen", classGroup: "8a"   },
-  { name: "8a Klassenrat",       criteriaType: "none",          classGroup: "8a"   },
   { name: "Jg8 History",         criteriaType: "general",       classGroup: "Jg8"  },
   { name: "Jg9 Social Studies",  criteriaType: "general",       classGroup: "Jg9"  },
   { name: "11P Social Studies",  criteriaType: "general",       classGroup: "11P"  },
@@ -249,7 +247,7 @@ migrateCourseNames();
 
 // criteriaType is the source of truth; ENGLISH_COURSES only fills in for a course
 // that isn't in COURSES_META (e.g. one restored from an older backup). A course
-// marked "none" — the Klassenrat — is not graded at all, so it gets no criteria.
+// marked "none" is not graded at all, so it gets no criteria.
 const getCriteria = (courseName) => {
   const meta = COURSES_META.find(c => c.name === courseName);
   if (meta?.criteriaType === "none") return [];
@@ -1204,7 +1202,7 @@ function App() {
       );
     }
 
-    // ── Kurs ohne Bewertungsbogen (Klassenrat): Anwesenheit und Thema fürs
+    // ── Kurs ohne Bewertungsbogen: Anwesenheit und Thema fürs
     //    Klassenbuch, aber keine Kriterien — der Kurs wird nicht benotet. ──
     if (criteria.length === 0) {
       const tKey  = `${today}_${activeCourse}`;
