@@ -37,6 +37,12 @@
         break-inside: avoid;
         page-break-inside: avoid;
       }
+      /* A Klassenbuch is per course — give each one its own sheet. */
+      .logbook-group + .logbook-group {
+        break-before: page;
+        page-break-before: always;
+      }
+      .logbook-group > div:first-child { border-bottom: 2px solid #666 !important; }
     }
   </style>
 </head>
@@ -1515,7 +1521,8 @@ function App() {
 
   // ── RENDER: KLASSENBUCH ──────────────────────────────────────────────────
 
-  const [logbookAll, setLogbookAll] = useState(false);
+  const [logbookAll,    setLogbookAll]    = useState(false);
+  const [logbookCourse, setLogbookCourse] = useState(null);  // null = alle Kurse
 
   const fmtLogDate = (d) => {
     const dt = new Date(`${d}T12:00:00`);
@@ -1545,7 +1552,20 @@ function App() {
       };
     })
     .filter(r => logbookAll || r.date >= cutoff)
+    .filter(r => !logbookCourse || r.course === logbookCourse)
     .sort((a,b) => a.key < b.key ? 1 : -1);
+
+    // A Klassenbuch is kept per course, so group by course and start each group on
+    // its own sheet when printing. One print then yields one page per course.
+    const groups = [];
+    rows.forEach(r => {
+      const g = groups.find(x => x.course === r.course);
+      if (g) g.rows.push(r); else groups.push({ course: r.course, rows: [r] });
+    });
+    groups.sort((a,b) => a.course.localeCompare(b.course, "de"));
+
+    const withData = [...new Set([...keys].map(k => k.slice(k.indexOf("_")+1)))]
+      .sort((a,b) => a.localeCompare(b, "de"));
 
     return (
       <div style={S.page} className="print-doc">
@@ -1555,9 +1575,25 @@ function App() {
           <button style={S.btnSm("primary")} onClick={() => window.print()}>Drucken / PDF</button>
         </div>
 
-        <h2 style={{ fontSize:20, fontWeight:700, margin:"8px 0 2px" }}>Klassenbuch</h2>
+        <h2 style={{ fontSize:20, fontWeight:700, margin:"8px 0 2px" }}>
+          Klassenbuch{logbookCourse ? ` · ${logbookCourse}` : ""}
+        </h2>
         <div style={{ fontSize:12, color:C.textDim, marginBottom:14 }}>
           {logbookAll ? "Alle erfassten Stunden" : "Letzte 7 Tage"} · Philipp Tran-Huynh · Gymnasium Grootmoor
+        </div>
+
+        <div className="no-print" style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10 }}>
+          {[null, ...withData].map(c => (
+            <button key={c || "alle"} onClick={() => setLogbookCourse(c)}
+              style={{ background: logbookCourse === c ? C.accentSoft : C.card,
+                       border:`1px solid ${logbookCourse === c ? C.accent : C.border}`,
+                       color: logbookCourse === c ? C.accent : C.textDim,
+                       borderRadius:20, padding:"5px 11px", fontSize:12,
+                       fontWeight: logbookCourse === c ? 600 : 400,
+                       cursor:"pointer", WebkitAppearance:"none" }}>
+              {c || "Alle Kurse"}
+            </button>
+          ))}
         </div>
 
         <button className="no-print" style={{ ...S.btnSm("ghost"), marginBottom:16 }}
@@ -1567,26 +1603,35 @@ function App() {
 
         {rows.length === 0 && (
           <div style={{ textAlign:"center", padding:"40px 0", color:C.textDim, fontSize:13 }}>
-            Noch keine Stunden erfasst.
+            {logbookCourse ? `Für ${logbookCourse} ist hier noch nichts erfasst.` : "Noch keine Stunden erfasst."}
           </div>
         )}
 
-        {rows.map(r => (
-          <div key={r.key} className="logbook-row"
-            style={{ padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
-            <div style={{ display:"flex", justifyContent:"space-between", gap:10, marginBottom:2 }}>
-              <span style={{ fontSize:13, fontWeight:700 }}>{fmtLogDate(r.date)} · {r.course}</span>
-              <span style={{ fontSize:11, color:C.textDim, flexShrink:0 }}>
-                {r.obsCount > 0 ? `${r.obsCount} Beob.` : ""}
-              </span>
+        {groups.map(g => (
+          <div key={g.course} className="logbook-group" style={{ marginBottom:22 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:C.accent, paddingBottom:6,
+                          borderBottom:`2px solid ${C.border}`, marginBottom:2 }}>
+              {g.course}
+              <span style={{ fontWeight:400, color:C.textDim, fontSize:11 }}> · {g.rows.length} Stunden</span>
             </div>
-            <div style={{ fontSize:13, marginBottom:3 }}>
-              {r.topic || <span style={{ color:C.textMuted, fontStyle:"italic" }}>kein Thema eingetragen</span>}
-            </div>
-            <div style={{ fontSize:11, color:C.textDim }}>
-              {r.absentNames.length ? `Fehlend: ${r.absentNames.join(", ")}` : "Vollzählig"}
-              {r.hwText ? ` · ${r.hwText}` : ""}
-            </div>
+            {g.rows.map(r => (
+              <div key={r.key} className="logbook-row"
+                style={{ padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:10, marginBottom:2 }}>
+                  <span style={{ fontSize:13, fontWeight:700 }}>{fmtLogDate(r.date)}</span>
+                  <span style={{ fontSize:11, color:C.textDim, flexShrink:0 }}>
+                    {r.obsCount > 0 ? `${r.obsCount} Beob.` : ""}
+                  </span>
+                </div>
+                <div style={{ fontSize:13, marginBottom:3 }}>
+                  {r.topic || <span style={{ color:C.textMuted, fontStyle:"italic" }}>kein Thema eingetragen</span>}
+                </div>
+                <div style={{ fontSize:11, color:C.textDim }}>
+                  {r.absentNames.length ? `Fehlend: ${r.absentNames.join(", ")}` : "Vollzählig"}
+                  {r.hwText ? ` · ${r.hwText}` : ""}
+                </div>
+              </div>
+            ))}
           </div>
         ))}
       </div>
