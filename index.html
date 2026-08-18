@@ -18,6 +18,26 @@
     /* Safe area padding for notch/home-indicator */
     .safe-top    { padding-top: max(16px, env(safe-area-inset-top)); }
     .safe-bottom { padding-bottom: max(80px, calc(60px + env(safe-area-inset-bottom))); }
+
+    /* Print: turn the dark app into a plain paper document. The app styles all
+       colours inline, so these rules need !important to win. Save as PDF via
+       Teilen → Drucken (iOS) or ⌘P (Mac). */
+    @media print {
+      @page { margin: 16mm; }
+      html, body { height: auto !important; background: #fff !important; color: #111 !important; }
+      .no-print { display: none !important; }
+      .print-doc { padding: 0 !important; }
+      .print-doc, .print-doc * {
+        background: transparent !important;
+        color: #111 !important;
+        box-shadow: none !important;
+      }
+      .logbook-row {
+        border-bottom: 1px solid #bbb !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+    }
   </style>
 </head>
 <body>
@@ -342,6 +362,8 @@ function App() {
   const [observations, setObservations] = useState(() => loadData("obs_observations", []));
   const [homework,     setHomework]     = useState(() => loadData("obs_homework", {}));
   const [absences,     setAbsences]     = useState(() => loadData("obs_absences", {}));
+  // Lesson topic per course and day, same "YYYY-MM-DD_Kursname" key as the two above.
+  const [topics,       setTopics]       = useState(() => loadData("obs_topics", {}));
 
   // A locked phone or an app switch discards the page, so the running session is
   // restored from storage — but only if it is from today.
@@ -375,6 +397,29 @@ function App() {
   const [confirmRemoveKey,  setConfirmRemoveKey]  = useState(null);
   const studentKey = (courseName, studentId) => `${courseName}::${studentId}`;
 
+  const [topicEditing, setTopicEditing] = useState(false);
+  const [topicDraft,   setTopicDraft]   = useState("");
+
+  const setTopicFor = (courseName, value) => {
+    const key = `${dateKey()}_${courseName}`;
+    setTopics(prev => {
+      const next = { ...prev };
+      if (value.trim()) next[key] = value.trim(); else delete next[key];
+      return next;
+    });
+  };
+
+  // Recent distinct topics of this course, newest first. A unit usually runs over
+  // several lessons, so the topic is normally one tap rather than typing.
+  const recentTopics = (courseName, n = 4) => {
+    const seen = new Set(), out = [];
+    Object.entries(topics)
+      .filter(([k, v]) => k.endsWith(`_${courseName}`) && v && v.trim())
+      .sort((a, b) => a[0] < b[0] ? 1 : -1)
+      .forEach(([, v]) => { if (!seen.has(v) && out.length < n) { seen.add(v); out.push(v); } });
+    return out;
+  };
+
   const [lastAutoBackup, setLastAutoBackup] = useState(() => localStorage.getItem("obs_lastAutoBackup"));
   const [backupDue,      setBackupDue]      = useState(false);
 
@@ -404,6 +449,7 @@ function App() {
   useEffect(() => saveData("obs_observations", observations), [observations]);
   useEffect(() => saveData("obs_homework",     homework),     [homework]);
   useEffect(() => saveData("obs_absences",     absences),     [absences]);
+  useEffect(() => saveData("obs_topics",       topics),       [topics]);
 
   // Keep the running session recoverable; clear it once the lesson is ended.
   useEffect(() => {
@@ -645,7 +691,7 @@ function App() {
       version: "1.0",
       exportDate: new Date().toISOString(),
       app: "ClassPulse",
-      data: { courses, observations, homework, absences },
+      data: { courses, observations, homework, absences, topics },
     };
     const json = JSON.stringify(backup, null, 2);
     const blob = new Blob([json], { type:"application/json" });
@@ -669,6 +715,7 @@ function App() {
         // therefore always false — the check never ran.
         if (!backup.data || backup.app !== "ClassPulse") throw new Error("Das ist keine ClassPulse-Backup-Datei");
         const { courses: c, observations: o, homework: h, absences: a } = backup.data;
+        const tp = backup.data.topics && typeof backup.data.topics === "object" ? backup.data.topics : {};
         if (!Array.isArray(c) || !Array.isArray(o) ||
             !h || typeof h !== "object" || !a || typeof a !== "object")
           throw new Error("Daten unvollständig oder beschädigt");
@@ -685,10 +732,12 @@ function App() {
         setObservations(o);
         setHomework(h);
         setAbsences(a);
+        setTopics(tp);
         saveData("obs_courses",      c);
         saveData("obs_observations", o);
         saveData("obs_homework",     h);
         saveData("obs_absences",     a);
+        saveData("obs_topics",       tp);
         setBackupImportOK(true);
         setBackupError("");
         setTimeout(() => setBackupImportOK(false), 3000);
@@ -1145,7 +1194,48 @@ function App() {
     return (
       <div style={S.page}>
         <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
-        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 16px" }}>Wen beobachten?</h2>
+        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 12px" }}>Wen beobachten?</h2>
+
+        {/* Thema — steht neben dem Ablauf, blockiert ihn nie. Leer lassen kostet nichts. */}
+        {(() => {
+          const tKey  = `${today}_${activeCourse}`;
+          const saved = topics[tKey] || "";
+          const save  = (v) => { setTopicFor(activeCourse, v); setTopicEditing(false); };
+          if (!topicEditing) return (
+            <div onClick={() => { setTopicDraft(saved); setTopicEditing(true); }}
+              style={{ fontSize:12, color: saved ? C.text : C.textMuted, cursor:"pointer",
+                       padding:"7px 10px", marginBottom:14, borderRadius:8,
+                       border:`1px dashed ${C.border}` }}>
+              {saved ? <><span style={{ color:C.textDim }}>Thema: </span>{saved}</> : "+ Thema fürs Klassenbuch (optional)"}
+            </div>
+          );
+          const chips = recentTopics(activeCourse).filter(t => t !== topicDraft);
+          return (
+            <div style={{ marginBottom:14 }}>
+              <div style={{ display:"flex", gap:6 }}>
+                <input autoFocus value={topicDraft}
+                  onChange={e => setTopicDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") save(topicDraft);
+                                    if (e.key === "Escape") setTopicEditing(false); }}
+                  placeholder="Thema dieser Stunde"
+                  style={{ flex:1, padding:"9px 11px", background:C.surface,
+                           border:`1px solid ${C.accent}`, borderRadius:8, color:C.text,
+                           fontSize:13, outline:"none" }} />
+                <button style={S.btnSm("primary")} onClick={() => save(topicDraft)}>✓</button>
+              </div>
+              {chips.length > 0 && (
+                <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:8 }}>
+                  {chips.map(t => (
+                    <button key={t} onClick={() => save(t)}
+                      style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:20,
+                               padding:"5px 11px", fontSize:12, color:C.textDim, cursor:"pointer",
+                               WebkitAppearance:"none" }}>{t}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {suggested.length > 0 && (
           <>
@@ -1423,6 +1513,86 @@ function App() {
 
   // ── RENDER: SETTINGS tab ─────────────────────────────────────────────────
 
+  // ── RENDER: KLASSENBUCH ──────────────────────────────────────────────────
+
+  const [logbookAll, setLogbookAll] = useState(false);
+
+  const fmtLogDate = (d) => {
+    const dt = new Date(`${d}T12:00:00`);
+    return `${DAYS[dt.getDay()].slice(0,2)} ${String(dt.getDate()).padStart(2,"0")}.${String(dt.getMonth()+1).padStart(2,"0")}.`;
+  };
+
+  const renderLogbook = () => {
+    // A lesson counts as held if anything at all was recorded for it.
+    const keys = new Set([
+      ...Object.keys(topics), ...Object.keys(absences), ...Object.keys(homework),
+      ...observations.map(o => `${o.date}_${o.course}`),
+    ]);
+    const cutoff = new Date(Date.now() - 7*86400000).toISOString().slice(0,10);
+    const rows = [...keys].map(k => {
+      const i = k.indexOf("_");
+      const date = k.slice(0, i), course = k.slice(i+1);
+      const c = courses.find(x => x.name === course);
+      const absentNames = (absences[k] || [])
+        .map(id => c?.students.find(s => s.id === id)?.name)
+        .filter(Boolean);
+      const hw = homework[k];
+      const missing = hw ? Object.values(hw).filter(v => v !== "done").length : 0;
+      return {
+        key:k, date, course, topic: topics[k] || "", absentNames,
+        hwText: !hw ? null : missing === 0 ? "HA vollständig" : `HA: ${missing}× unvollständig`,
+        obsCount: observations.filter(o => o.date === date && o.course === course && isRating(o)).length,
+      };
+    })
+    .filter(r => logbookAll || r.date >= cutoff)
+    .sort((a,b) => a.key < b.key ? 1 : -1);
+
+    return (
+      <div style={S.page} className="print-doc">
+        <div className="no-print" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+          <button style={{ background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", padding:0, WebkitAppearance:"none" }}
+            onClick={() => setPage("settings")}>← Zurück</button>
+          <button style={S.btnSm("primary")} onClick={() => window.print()}>Drucken / PDF</button>
+        </div>
+
+        <h2 style={{ fontSize:20, fontWeight:700, margin:"8px 0 2px" }}>Klassenbuch</h2>
+        <div style={{ fontSize:12, color:C.textDim, marginBottom:14 }}>
+          {logbookAll ? "Alle erfassten Stunden" : "Letzte 7 Tage"} · Philipp Tran-Huynh · Gymnasium Grootmoor
+        </div>
+
+        <button className="no-print" style={{ ...S.btnSm("ghost"), marginBottom:16 }}
+          onClick={() => setLogbookAll(v => !v)}>
+          {logbookAll ? "Nur letzte 7 Tage" : "Alle Stunden zeigen"}
+        </button>
+
+        {rows.length === 0 && (
+          <div style={{ textAlign:"center", padding:"40px 0", color:C.textDim, fontSize:13 }}>
+            Noch keine Stunden erfasst.
+          </div>
+        )}
+
+        {rows.map(r => (
+          <div key={r.key} className="logbook-row"
+            style={{ padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", gap:10, marginBottom:2 }}>
+              <span style={{ fontSize:13, fontWeight:700 }}>{fmtLogDate(r.date)} · {r.course}</span>
+              <span style={{ fontSize:11, color:C.textDim, flexShrink:0 }}>
+                {r.obsCount > 0 ? `${r.obsCount} Beob.` : ""}
+              </span>
+            </div>
+            <div style={{ fontSize:13, marginBottom:3 }}>
+              {r.topic || <span style={{ color:C.textMuted, fontStyle:"italic" }}>kein Thema eingetragen</span>}
+            </div>
+            <div style={{ fontSize:11, color:C.textDim }}>
+              {r.absentNames.length ? `Fehlend: ${r.absentNames.join(", ")}` : "Vollzählig"}
+              {r.hwText ? ` · ${r.hwText}` : ""}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderSettings = () => (
     <div style={S.page}>
       <h2 style={{ fontSize:20, fontWeight:700, margin:"0 0 16px" }}>Einstellungen</h2>
@@ -1460,6 +1630,12 @@ function App() {
         )}
       </div>
 
+      <div style={S.sectionLbl}>Klassenbuch</div>
+      <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginTop:0 }}
+        onClick={() => setPage("logbook")}>
+        <Icon name="chart" size={16} color={C.textDim} /> Stunden-Übersicht (Thema · Fehlende · HA)
+      </button>
+
       <div style={S.sectionLbl}>CSV / PDF Export</div>
       <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
         onClick={() => { setShowExport(true); setCopyOK(false); }}>
@@ -1470,7 +1646,8 @@ function App() {
       <button style={{ ...S.btn("ghost"), borderColor:C.red, color:C.red }}
         onClick={() => {
           if (window.confirm("Wirklich ALLE Daten löschen? Dies kann nicht rückgängig gemacht werden.")) {
-            ["obs_courses","obs_observations","obs_homework","obs_absences"].forEach(k => localStorage.removeItem(k));
+            ["obs_courses","obs_observations","obs_homework","obs_absences","obs_topics",
+             "obs_session","obs_lastAutoBackup","obs_nextAutoBackupDays"].forEach(k => localStorage.removeItem(k));
             window.location.reload();
           }
         }}>
@@ -1561,7 +1738,7 @@ function App() {
   return (
     <div style={S.app}>
       {/* Header */}
-      <div style={S.header}>
+      <div style={S.header} className="no-print">
         <div>
           <div style={S.logo}>ClassPulse</div>
           <div style={S.subtitle}>
@@ -1579,6 +1756,7 @@ function App() {
       {page==="home"     ? renderSession()  :
        page==="students" ? renderStudents() :
        page==="overview" ? renderOverview() :
+       page==="logbook"  ? renderLogbook()  :
        renderSettings()}
 
       {/* Import modal */}
@@ -1772,7 +1950,7 @@ function App() {
       )}
 
       {/* Bottom nav */}
-      <div style={S.nav}>
+      <div style={S.nav} className="no-print">
         {[
           { id:"home",     icon:"home",     label:"Stunde" },
           { id:"students", icon:"users",    label:"Kurse"  },
