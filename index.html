@@ -140,7 +140,7 @@ const GENERAL_CRITERIA = [
   {
     id:"gs3", short:"Auf andere eingehen", area:"Sprache & Komm.",
     full:"Berücksichtigt Beiträge von Mitschülern; bringt eigene Gedanken ein statt nur zu wiederholen.",
-    examples:["'Ich ergänze, was X gesagt hat...'", "Greift Ideen anderer auf und entwickelt sie weiter", "− wenn nur wiederholt ohne eigenen Beitrag ('Laberer')"],
+    examples:["'Ich ergänze, was X gesagt hat...'", "Greift Ideen anderer auf und entwickelt sie weiter", "− wenn Gesagtes wiederholt wird, ohne einen eigenen Gedanken zu ergänzen"],
   },
 ];
 
@@ -619,7 +619,10 @@ function App() {
   };
 
   // ── NOTENVORSCHLAG ───────────────────────────────────────────────────────
-  const MIN_ENTRIES  = 5;
+  // 6, not 5: at exactly 5 entries no whole number of "+" lands in the 45–60%
+  // band, so the grade "3" — the most common one — could not be proposed at the
+  // very moment the proposal unlocks. From 6 entries on, every band is reachable.
+  const MIN_ENTRIES  = 6;
   const MIN_DAYS     = 3;
 
   const getGradeProposal = (courseName, studentId) => {
@@ -1250,7 +1253,15 @@ function App() {
                         </span>
                       ) : (
                         <span style={{ fontSize:10, color:C.textMuted, minWidth:32, textAlign:"right" }}>
-                          {MIN_ENTRIES - prog.count > 0 ? `noch ${MIN_ENTRIES - prog.count}` : `${MIN_DAYS - prog.days}T fehlt`}
+                          {(() => {
+                            // Both conditions must show. Reporting only the missing
+                            // entries let "noch 1" appear when 2 more days were needed too.
+                            const needEntries = MIN_ENTRIES - prog.count;
+                            const needDays    = MIN_DAYS - prog.days;
+                            if (needEntries > 0 && needDays > 0) return `noch ${needEntries} · ${needDays}T`;
+                            if (needEntries > 0) return `noch ${needEntries}`;
+                            return `${needDays}T fehlt`;
+                          })()}
                         </span>
                       )}
                     </div>

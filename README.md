@@ -124,7 +124,7 @@ ReportLab läuft lokal — dafür ist die Qualität deutlich besser.
 
 ## Pädagogische Regeln (nicht ändern ohne Grund)
 
-- **Notenvorschlag ab 5 Einträgen / 3 verschiedenen Tagen** — ein einzelner
+- **Notenvorschlag ab 6 Einträgen / 3 verschiedenen Tagen** — ein einzelner
   Tag darf keine Note bestimmen (pädagogisch + rechtlich)
 - **Nur + und −** — keine 5-Stufen-Skala im Unterricht. Die Feinabstufung
   passiert am Halbjahresende durch die Lehrkraft, nicht in der Stunde

@@ -132,7 +132,11 @@ Der Python-Code für die Generierung liegt in `classpulse_export.py` im selben R
 
 ## Notenvorschlag-Logik
 
-Nur anzeigen ab: **5 Einträge / 3 verschiedene Tage**
+Nur anzeigen ab: **6 Einträge / 3 verschiedene Tage**
+
+(6 statt 5: Bei genau 5 Einträgen liegt keine ganze Zahl von „+" im Band
+45–60 %, die Note **3** wäre also im Moment der Freischaltung rechnerisch
+unerreichbar. Ab 6 Einträgen ist jedes Notenband erreichbar.)
 
 | Ratio +/(+−) | Note    | Label                         |
 |-------------|---------|-------------------------------|
