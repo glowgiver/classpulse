@@ -36,12 +36,12 @@ const SCHEDULE = [
   { day: 1, start: "08:00", end: "09:30", course: "8a Englisch",         type: "double" },
   { day: 1, start: "09:50", end: "10:35", course: "8a Klassenrat",       type: "single" },
   { day: 1, start: "11:35", end: "13:05", course: "11P Social Studies",  type: "double" },
-  { day: 1, start: "13:20", end: "14:50", course: "9c Social Studies",   type: "double" },
+  { day: 1, start: "13:20", end: "14:50", course: "Jg9 Social Studies",  type: "double" },
   { day: 2, start: "08:00", end: "09:30", course: "Jg10 Social Studies", type: "double" },
   { day: 3, start: "08:00", end: "09:30", course: "12. Kl. Englisch",    type: "double" },
   { day: 3, start: "09:50", end: "11:20", course: "11P Social Studies",  type: "double" },
-  { day: 3, start: "11:35", end: "12:20", course: "9c Social Studies",   type: "single" },
-  { day: 4, start: "09:50", end: "11:20", course: "8a History",          type: "double" },
+  { day: 3, start: "11:35", end: "12:20", course: "Jg9 Social Studies",  type: "single" },
+  { day: 4, start: "09:50", end: "11:20", course: "Jg8 History",         type: "double" },
   { day: 4, start: "11:35", end: "12:20", course: "8a Englisch",         type: "single" },
   { day: 4, start: "13:20", end: "14:50", course: "11P WiE",             type: "double" },
   { day: 5, start: "09:50", end: "11:20", course: "12. Kl. Englisch",    type: "double" },
@@ -151,8 +151,8 @@ const DEFAULT_STUDENTS = Array.from({ length: 25 }, (_, i) => ({
 const COURSES_META = [
   { name: "8a Englisch",         criteriaType: "fremdsprachen", classGroup: "8a"   },
   { name: "8a Klassenrat",       criteriaType: "none",          classGroup: "8a"   },
-  { name: "8a History",          criteriaType: "general",       classGroup: "8a"   },
-  { name: "9c Social Studies",   criteriaType: "general",       classGroup: "9c"   },
+  { name: "Jg8 History",         criteriaType: "general",       classGroup: "Jg8"  },
+  { name: "Jg9 Social Studies",  criteriaType: "general",       classGroup: "Jg9"  },
   { name: "11P Social Studies",  criteriaType: "general",       classGroup: "11P"  },
   { name: "Jg10 Social Studies", criteriaType: "general",       classGroup: "Jg10" },
   { name: "Jg10 History",        criteriaType: "general",       classGroup: "Jg10" },
@@ -176,6 +176,50 @@ const loadData = (key, fallback) => {
   catch { return fallback; }
 };
 const saveData = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {} };
+
+// DiViS shows both of these as cross-class courses (9 Soc91 draws on 9a/9b/9d,
+// 8 His82 on 8a/8d/8e/8f), so the class-specific names were simply wrong.
+// The course name is the foreign key for observations, homework and absences,
+// so anything already stored has to be carried over with it — otherwise the old
+// entries survive in storage but belong to a course that no longer exists.
+const COURSE_RENAMES = {
+  "9c Social Studies": "Jg9 Social Studies",
+  "8a History":        "Jg8 History",
+};
+
+const migrateCourseNames = () => {
+  try {
+    if (localStorage.getItem("obs_courseRename_v1")) return;
+    const ren = (n) => COURSE_RENAMES[n] || n;
+
+    const courses = loadData("obs_courses", null);
+    if (courses) saveData("obs_courses", courses.map(c => ({ ...c, name: ren(c.name) })));
+
+    const obs = loadData("obs_observations", null);
+    if (obs) saveData("obs_observations", obs.map(o => ({ ...o, course: ren(o.course) })));
+
+    // homework/absences are keyed "YYYY-MM-DD_Kursname"; split at the first "_"
+    // only, since course names may contain further underscores.
+    ["obs_homework", "obs_absences"].forEach(key => {
+      const val = loadData(key, null);
+      if (!val) return;
+      const out = {};
+      Object.entries(val).forEach(([k, v]) => {
+        const i = k.indexOf("_");
+        out[i < 0 ? k : `${k.slice(0, i)}_${ren(k.slice(i + 1))}`] = v;
+      });
+      saveData(key, out);
+    });
+
+    const session = loadData("obs_session", null);
+    if (session && session.activeCourse) {
+      saveData("obs_session", { ...session, activeCourse: ren(session.activeCourse) });
+    }
+
+    localStorage.setItem("obs_courseRename_v1", "1");
+  } catch(e) {}
+};
+migrateCourseNames();
 
 const getCriteria = (courseName) =>
   ENGLISH_COURSES.includes(courseName) ? FREMDSPRACHEN_CRITERIA : GENERAL_CRITERIA;
@@ -753,9 +797,26 @@ function App() {
 
   // ── RENDER: ABSENT ───────────────────────────────────────────────────────
 
+  const renderMissingCourse = () => (
+    <div style={S.page}>
+      <div style={{ textAlign:"center", padding:"48px 20px" }}>
+        <div style={{ fontSize:36, marginBottom:12 }}>🤔</div>
+        <div style={{ fontSize:15, fontWeight:600, marginBottom:6 }}>Kurs nicht gefunden</div>
+        <div style={{ fontSize:13, color:C.textDim, lineHeight:"1.6" }}>
+          „{activeCourse}" steht im Stundenplan, aber nicht in deinen gespeicherten
+          Kursen. Meist heißt das: Der Kurs wurde umbenannt. Deine Einträge sind nicht
+          verloren — sie hängen am alten Namen.
+        </div>
+        <button style={{ ...S.btn("primary"), marginTop:20 }} onClick={goHome}>Zurück</button>
+      </div>
+    </div>
+  );
+
   const renderAbsent = () => {
     const course = courses.find(c => c.name === activeCourse);
-    if (!course) return null;
+    // A course name that no longer exists used to render an empty page with no
+    // explanation — undiagnosable mid-lesson. Say what happened instead.
+    if (!course) return renderMissingCourse();
     return (
       <div style={S.page}>
         <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
@@ -799,7 +860,9 @@ function App() {
 
   const renderHomework = () => {
     const course  = courses.find(c => c.name === activeCourse);
-    if (!course) return null;
+    // A course name that no longer exists used to render an empty page with no
+    // explanation — undiagnosable mid-lesson. Say what happened instead.
+    if (!course) return renderMissingCourse();
     const present = course.students.filter(st => !todayAbsent.includes(st.id));
     const exCount = Object.values(hwExceptions).filter(v => v !== "done").length;
 
@@ -860,7 +923,9 @@ function App() {
 
   const renderObserve = () => {
     const course = courses.find(c => c.name === activeCourse);
-    if (!course) return null;
+    // A course name that no longer exists used to render an empty page with no
+    // explanation — undiagnosable mid-lesson. Say what happened instead.
+    if (!course) return renderMissingCourse();
     const criteria  = getCriteria(activeCourse);
     const suggested = getSuggested(activeCourse, 4);
     const absentIds = absences[`${today}_${activeCourse}`] || [];
