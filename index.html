@@ -13,7 +13,10 @@
   <link rel="apple-touch-icon" href="icon-192.png" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; background: #0f1117; color: #E4E4E7; font-family: 'Inter', 'SF Pro Display', system-ui, sans-serif; }
+    html, body { height: 100%; background: #0f1117; color: #E4E4E7; font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif; }
+    @media (prefers-color-scheme: light) {
+      html, body { background: #F5F6F8; color: #14161C; }
+    }
     #root { height: 100%; }
     /* Safe area padding for notch/home-indicator */
     .safe-top    { padding-top: max(16px, env(safe-area-inset-top)); }
@@ -54,7 +57,7 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
 <script type="text/babel">
-const { useState, useEffect, useCallback } = React;
+const { useState, useEffect, useCallback, useMemo } = React;
 
 // ─── DATA ────────────────────────────────────────────────────────────────────
 
@@ -169,9 +172,11 @@ const GENERAL_CRITERIA = [
   },
 ];
 
-const DEFAULT_STUDENTS = Array.from({ length: 25 }, (_, i) => ({
-  id: `s${i+1}`, name: `Schüler/in ${i+1}`,
-}));
+// Kurse starten leer. 25 Platzhalter „Schüler/in 1…25" ließen den ganzen Ablauf
+// funktionieren — man konnte eine Stunde darauf erfassen, und der spätere Import
+// vergab neue IDs und trennte genau diese Einträge ab. Ein leerer Zustand, der
+// eine Aufgabe stellt, ist besser als ein gefüllter, der eine Falle stellt.
+const DEFAULT_STUDENTS = [];
 
 const COURSES_META = [
   { name: "8a Englisch",         criteriaType: "fremdsprachen", classGroup: "8a"   },
@@ -263,86 +268,94 @@ const getCurrentSlot = () => {
   return SCHEDULE.find(s => s.day === day && hhmm >= s.start && hhmm <= s.end) || null;
 };
 
-// ─── EXPORT CSV ──────────────────────────────────────────────────────────────
-
-const generateCSV = (courses, observations, homework, absences) => {
-  const lines = ["ClassPulse Export — " + new Date().toLocaleDateString("de-DE")];
-  courses.filter(c => c.criteriaType !== "none").forEach(course => {
-    const criteria = getCriteria(course.name);
-    lines.push(`\n=== ${course.name} ===`);
-    lines.push(`Name,${criteria.map(c => c.short).join(",")},HA-Quote,Fehltage,Gesamt`);
-    course.students.forEach(st => {
-      const obs = observations.filter(o => o.course === course.name && o.studentId === st.id);
-      const critSummary = criteria.map(crit => {
-        const pos = obs.filter(o => o.criterionId === crit.id && o.rating === "+").length;
-        const neg = obs.filter(o => o.criterionId === crit.id && o.rating === "-").length;
-        return (pos === 0 && neg === 0) ? "-" : `+${pos}/-${neg}`;
-      });
-      let hwTotal = 0, hwDone = 0;
-      Object.entries(homework).forEach(([key, val]) => {
-        if (key.endsWith(`_${course.name}`)) {
-          const status = val[st.id];
-          // No record = absent, or not yet in the course. Counting that as "done"
-          // handed absent students a free 100%.
-          if (status === undefined) return;
-          hwTotal++;
-          if (status === "done") hwDone++;
-          else if (status === "half") hwDone += 0.5;
-        }
-      });
-      const hwPct = hwTotal > 0 ? `${Math.round((hwDone/hwTotal)*100)}%` : "-";
-      let absentCount = 0;
-      Object.entries(absences).forEach(([key, ids]) => {
-        if (key.endsWith(`_${course.name}`) && ids.includes(st.id)) absentCount++;
-      });
-      lines.push(`"${st.name}",${critSummary.join(",")},${hwPct},${absentCount},${obs.length}`);
-    });
-  });
-  return lines.join("\n");
-};
-
 // ─── COLORS & STYLES ─────────────────────────────────────────────────────────
 
-const C = {
-  bg:         "#0f1117",
-  card:       "#1a1d27",
-  accent:     "#6C8EEF",
-  accentSoft: "rgba(108,142,239,0.12)",
-  green:      "#4ADE80",
-  greenSoft:  "rgba(74,222,128,0.12)",
-  red:        "#F87171",
-  redSoft:    "rgba(248,113,113,0.12)",
-  amber:      "#FBBF24",
-  amberSoft:  "rgba(251,191,36,0.12)",
-  text:       "#E4E4E7",
-  textDim:    "#71717A",
-  textMuted:  "#52525B",
-  border:     "#27272A",
-  surface:    "#18181B",
+// Zwei Paletten. Der Klassenraum am Fenster ist der hellste Ort im Gebäude —
+// eine dunkle Fläche spiegelt dort das Licht. Alle Wertepaare sind gegen
+// WCAG AA gerechnet (Fließtext 4,5:1), nicht invertiert.
+const PALETTE = {
+  dark: {
+    bg:         "#0f1117",
+    card:       "#1a1d27",
+    accent:     "#6C8EEF",
+    accentSoft: "rgba(108,142,239,0.12)",
+    green:      "#4ADE80",
+    greenSoft:  "rgba(74,222,128,0.12)",
+    red:        "#F87171",
+    redSoft:    "rgba(248,113,113,0.12)",
+    amber:      "#FBBF24",
+    amberSoft:  "rgba(251,191,36,0.12)",
+    text:       "#E4E4E7",
+    textDim:    "#9CA0AD",
+    textMuted:  "#8A8F9E",
+    onFill:     "#101319",
+    border:     "#27272A",
+    surface:    "#18181B",
+  },
+  light: {
+    bg:         "#F5F6F8",
+    card:       "#FFFFFF",
+    accent:     "#2F49BE",   // 7,4:1 auf Weiß
+    accentSoft: "rgba(47,73,190,0.10)",
+    green:      "#0F7040",   // 5,6:1
+    greenSoft:  "rgba(15,112,64,0.10)",
+    red:        "#B3261E",   // 6,4:1
+    redSoft:    "rgba(179,38,30,0.09)",
+    amber:      "#7A4E00",   // 7,0:1
+    amberSoft:  "rgba(122,78,0,0.10)",
+    text:       "#14161C",
+    textDim:    "#585E6B",   // 6,6:1
+    textMuted:  "#6A7080",   // 4,9:1
+    onFill:     "#FFFFFF",   // auf den kräftigen Hellmodus-Farben
+    border:     "#DCDFE5",
+    surface:    "#EEF0F3",
+  },
 };
 
-const S = {
-  app:         { minHeight:"100vh", background:C.bg, color:C.text, fontFamily:"'Inter','SF Pro Display',system-ui,sans-serif" },
+const prefersLight = () => {
+  try { return window.matchMedia("(prefers-color-scheme: light)").matches; }
+  catch(e) { return false; }
+};
+
+let C = PALETTE[prefersLight() ? "light" : "dark"];
+
+const buildS = () => ({
+  app:         { minHeight:"100vh", background:C.bg, color:C.text, fontFamily:"-apple-system,'SF Pro Text',system-ui,sans-serif" },
   header:      { padding:"max(16px,env(safe-area-inset-top)) 20px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"space-between", background:C.bg, position:"sticky", top:0, zIndex:50 },
   logo:        { fontSize:17, fontWeight:700, letterSpacing:"-0.02em" },
-  subtitle:    { fontSize:11, color:C.textDim, marginTop:2 },
+  subtitle:    { fontSize:13, color:C.textDim, marginTop:2 },
   nav:         { position:"fixed", bottom:0, left:0, right:0, background:C.card, borderTop:`1px solid ${C.border}`, display:"flex", justifyContent:"space-around", padding:`10px 0 max(14px,env(safe-area-inset-bottom))`, zIndex:100 },
-  navBtn:   a  => ({ background:"none", border:"none", color:a?C.accent:C.textDim, fontSize:10, fontWeight:a?600:400, display:"flex", flexDirection:"column", alignItems:"center", gap:3, cursor:"pointer", padding:"4px 16px", WebkitAppearance:"none" }),
+  navBtn:   a  => ({ background:"none", border:"none", color:a?C.accent:C.textDim, fontSize:11, fontWeight:a?600:400, display:"flex", flexDirection:"column", alignItems:"center", gap:3, cursor:"pointer", padding:"9px 16px", WebkitAppearance:"none" }),
   page:        { padding:"16px 20px", paddingBottom:"160px" },
-  sectionLbl:  { fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.08em", color:C.textDim, marginBottom:8, marginTop:20 },
+  sectionLbl:  { fontSize:13, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.08em", color:C.textDim, marginBottom:8, marginTop:20 },
   courseCard: a => ({ background:a?C.accentSoft:C.card, border:`1px solid ${a?C.accent:C.border}`, borderRadius:12, padding:"14px 16px", marginBottom:8, cursor:"pointer" }),
   courseTitle: { fontSize:15, fontWeight:600 },
-  courseMeta:  { fontSize:12, color:C.textDim, marginTop:2 },
-  badge:    c  => ({ display:"inline-block", padding:"2px 8px", borderRadius:20, fontSize:10, fontWeight:600, background:c==="blue"?C.accentSoft:C.greenSoft, color:c==="blue"?C.accent:C.green, marginLeft:8 }),
-  btn:      v  => ({ background:v==="primary"?C.accent:v==="green"?C.green:"transparent", color:v==="primary"||v==="green"?"#fff":C.text, border:v==="ghost"?`1px solid ${C.border}`:"none", borderRadius:10, padding:"13px 20px", fontSize:14, fontWeight:600, cursor:"pointer", width:"100%", marginTop:8, WebkitAppearance:"none" }),
-  btnSm:    v  => ({ background:v==="primary"?C.accent:v==="green"?C.greenSoft:v==="red"?C.redSoft:v==="amber"?C.amberSoft:"transparent", color:v==="primary"?"#fff":v==="green"?C.green:v==="red"?C.red:v==="amber"?C.amber:C.text, border:v==="ghost"?`1px solid ${C.border}`:"none", borderRadius:8, padding:"9px 14px", fontSize:13, fontWeight:600, cursor:"pointer", WebkitAppearance:"none" }),
-  row:         { display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 14px", background:C.card, borderRadius:10, marginBottom:6, border:`1px solid ${C.border}` },
+  courseMeta:  { fontSize:13, color:C.textDim, marginTop:2 },
+  badge:    c  => ({ display:"inline-block", padding:"2px 8px", borderRadius:20, fontSize:13, fontWeight:600, background:c==="blue"?C.accentSoft:C.greenSoft, color:c==="blue"?C.accent:C.green, marginLeft:8 }),
+  btn:      v  => ({ background:v==="primary"?C.accent:v==="green"?C.green:"transparent", color:v==="primary"||v==="green"?C.onFill:C.text, border:v==="ghost"?`1px solid ${C.border}`:"none", borderRadius:10, padding:"14px 20px", fontSize:15, fontWeight:600, cursor:"pointer", width:"100%", marginTop:8, WebkitAppearance:"none" }),
+  btnSm:    v  => ({ background:v==="primary"?C.accent:v==="green"?C.greenSoft:v==="red"?C.redSoft:v==="amber"?C.amberSoft:"transparent", color:v==="primary"?C.onFill:v==="green"?C.green:v==="red"?C.red:v==="amber"?C.amber:C.text, border:v==="ghost"?`1px solid ${C.border}`:"none", borderRadius:8, padding:"12px 16px", fontSize:15, fontWeight:600, cursor:"pointer", WebkitAppearance:"none" }),
+  row:         { display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", background:C.card, borderRadius:10, marginBottom:6, border:`1px solid ${C.border}` },
   critCard:    { background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px", marginBottom:6 },
-  textarea:    { width:"100%", padding:"12px 14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, color:C.text, fontSize:13, outline:"none", minHeight:120, resize:"vertical", fontFamily:"inherit", boxSizing:"border-box" },
+  textarea:    { width:"100%", padding:"12px 14px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, color:C.text, fontSize:15, outline:"none", minHeight:120, resize:"vertical", fontFamily:"inherit", boxSizing:"border-box" },
   modal:       { position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" },
   modalInner:  { background:C.card, borderRadius:"16px 16px 0 0", padding:"20px 20px max(24px,env(safe-area-inset-bottom))", width:"100%", maxWidth:520, maxHeight:"88vh", overflowY:"auto" },
   statCard:    { background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 16px", flex:1, textAlign:"center" },
+});
+
+let S = buildS();
+
+// Die Inline-Styles lesen C und S beim Rendern. Es genügt daher, beide Bindungen
+// auszutauschen und einmal neu zu rendern — kein Umbau der 2000 Zeilen darunter.
+const applyTheme = () => {
+  C = PALETTE[prefersLight() ? "light" : "dark"];
+  S = buildS();
+  document.documentElement.style.background = C.bg;
+  document.body.style.background = C.bg;
+  document.body.style.color = C.text;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", C.bg);
 };
+applyTheme();
 
 // ─── ICON ────────────────────────────────────────────────────────────────────
 
@@ -398,6 +411,15 @@ function App() {
   const [showExport,    setShowExport]    = useState(false);
   const [copyOK,        setCopyOK]        = useState(false);
   const [infoCrit,      setInfoCrit]      = useState(null);
+  const [openCourse,   setOpenCourse]    = useState(null);
+  const [openStats,    setOpenStats]     = useState(null);
+  const [nameFilter,   setNameFilter]    = useState("");   // Beobachten-Liste
+  const [hwFilter,     setHwFilter]      = useState("");   // Hausaufgaben-Phase
+  // Notenvorschläge stehen in der Übersicht neben Klarnamen, untereinander,
+  // in Rot und Grün — ein Blick über die Schulter genügt für ein Klassenranking.
+  // Standardmäßig verdeckt; ein Tipp deckt sie für 30 Sekunden auf.
+  const [gradesVisible, setGradesVisible] = useState(false);
+  const [showAttendance,setShowAttendance]= useState(false);
   const [showBackup,    setShowBackup]    = useState(false);
   const [backupImportOK,setBackupImportOK]= useState(false);
   const [backupError,   setBackupError]  = useState("");
@@ -409,6 +431,17 @@ function App() {
   const [confirmRemoveKey,  setConfirmRemoveKey]  = useState(null);
   const studentKey = (courseName, studentId) => `${courseName}::${studentId}`;
 
+  const [confirmNoteId, setConfirmNoteId] = useState(null);
+  // Die iOS-Tastatur belegt im Hochformat rund 336pt. Tab-Leiste und Toast sind
+  // position:fixed und schwebten über dem Feld, in das man gerade tippt.
+  const [typing, setTyping] = useState(false);
+  const inputFocus = {
+    onFocus: (e) => {
+      setTyping(true);
+      setTimeout(() => e.target.scrollIntoView({ block:"center", behavior:"smooth" }), 250);
+    },
+    onBlur: () => setTyping(false),
+  };
   const [topicEditing, setTopicEditing] = useState(false);
   const [topicDraft,   setTopicDraft]   = useState("");
 
@@ -437,6 +470,12 @@ function App() {
 
   // Undo: { type, description, undo: () => void, expires: timestamp }
   const [lastAction, setLastAction] = useState(null);
+
+  useEffect(() => {
+    if (!gradesVisible) return;
+    const t = setTimeout(() => setGradesVisible(false), 30000);
+    return () => clearTimeout(t);
+  }, [gradesVisible]);
 
   // Auto-hide undo toast. Long enough to survive a glance back at the class.
   useEffect(() => {
@@ -488,6 +527,13 @@ function App() {
   // and only record the date once a real tap produced the file.
   const runDueBackup = () => {
     downloadBackup("ClassPulse_AutoBackup");
+    // Erst bestätigen lassen, dann stempeln. Ein Sicherungsdatum, dem man nicht
+    // glauben kann, ist schlechter als gar keine Anzeige.
+    if (!window.confirm(
+      "Backup-Datei gespeichert?\n\n" +
+      "OK bestätigt die Sicherung. Abbrechen lässt den Hinweis stehen, " +
+      "falls der Download nicht durchgelaufen ist."
+    )) return;
     const now = new Date().toISOString();
     localStorage.setItem("obs_lastAutoBackup", now);
     localStorage.setItem("obs_nextAutoBackupDays", String(4 + Math.floor(Math.random() * 4)));
@@ -500,13 +546,32 @@ function App() {
 
   // ── helpers ─────────────────────────────────────────────────────────────
 
+  // Jede Auswertung filterte bisher die vollständige Beobachtungsliste. In der
+  // Übersicht waren das 459 Volldurchläufe über 2160 Einträge pro Rendern —
+  // knapp eine Million Vergleiche, gemessen als 106ms Long Task. Der Index
+  // kostet einen Durchlauf, und zwar nur wenn sich Beobachtungen ändern.
+  const obsIndex = useMemo(() => {
+    const byStudent = new Map(), byCourse = new Map();
+    observations.forEach(o => {
+      const k = `${o.course}::${o.studentId}`;
+      if (!byStudent.has(k)) byStudent.set(k, []);
+      byStudent.get(k).push(o);
+      if (!byCourse.has(o.course)) byCourse.set(o.course, []);
+      byCourse.get(o.course).push(o);
+    });
+    return { byStudent, byCourse };
+  }, [observations]);
+
+  const obsFor       = useCallback((course, studentId) => obsIndex.byStudent.get(`${course}::${studentId}`) || [], [obsIndex]);
+  const obsForCourse = useCallback((course) => obsIndex.byCourse.get(course) || [], [obsIndex]);
+
   const getSuggested = useCallback((courseName, count=4) => {
     const course = courses.find(c => c.name === courseName);
     if (!course) return [];
     const absent  = absences[`${today}_${courseName}`] || [];
     const avail   = course.students.filter(st => !absent.includes(st.id));
     const lastObs = {}, ratings = {};
-    observations.filter(o => o.course === courseName).forEach(o => {
+    obsForCourse(courseName).forEach(o => {
       if (!lastObs[o.studentId] || o.date > lastObs[o.studentId]) lastObs[o.studentId] = o.date;
       if (isRating(o)) ratings[o.studentId] = (ratings[o.studentId] || 0) + 1;
     });
@@ -520,17 +585,26 @@ function App() {
       // quiet student at the back of the queue for weeks.
       return (ratings[a.id] || 0) - (ratings[b.id] || 0);
     }).slice(0,count);
-  }, [courses, observations, absences, today]);
+  }, [courses, obsForCourse, absences, today]);
 
   const getStats = useCallback((courseName, studentId) => {
     // Notes are stored with rating "+" — they must never count as a positive.
-    const obs  = observations.filter(o =>
-      o.course === courseName && o.studentId === studentId && isRating(o));
+    const obs  = obsFor(courseName, studentId).filter(isRating);
     const pos  = obs.filter(o => o.rating === "+").length;
     const neg  = obs.filter(o => o.rating === "-").length;
     const last = obs.reduce((m,o) => o.date > m ? o.date : m, "");
     return { pos, neg, total:obs.length, last };
-  }, [observations]);
+  }, [obsFor]);
+
+  // Was ist heute mit diesem Menschen passiert? Die Angabe steckte bisher nur in
+  // der Detailansicht — in der Liste war nach einer Unterbrechung nicht erkennbar,
+  // wen man schon hatte, und genau darauf kann man sich am wenigsten verlassen.
+  const getToday = useCallback((courseName, studentId) => {
+    const obs = obsFor(courseName, studentId).filter(o => o.date === today);
+    const rated   = obs.filter(isRating).length;
+    const skipped = obs.some(o => o.criterionId === "skip");
+    return { rated, skipped, done: rated > 0 || skipped };
+  }, [obsFor, today]);
 
   // ── session actions ──────────────────────────────────────────────────────
 
@@ -541,6 +615,28 @@ function App() {
     setHwExceptions({});
     setActiveStudent(null);
     setSessionPhase("absent");
+  };
+
+  // Nachzügler waren nicht nachtragbar: die Anwesenheit wurde einmal in Phase 1
+  // erfasst, danach führte nur das ✕ heraus. Sie ist aber ein Zustand und muss
+  // deshalb während der ganzen Stunde erreichbar bleiben.
+  const toggleAbsentToday = (studentId) => {
+    const key     = `${today}_${activeCourse}`;
+    const course  = courses.find(c => c.name === activeCourse);
+    const stName  = course?.students.find(st => st.id === studentId)?.name.split(" ")[0] || "?";
+    const wasAbsent = (absences[key] || []).includes(studentId);
+    const apply = (absent) => {
+      setAbsences(prev => {
+        const cur = prev[key] || [];
+        return { ...prev, [key]: absent ? [...new Set([...cur, studentId])] : cur.filter(i => i !== studentId) };
+      });
+      setTodayAbsent(prev => absent ? [...new Set([...prev, studentId])] : prev.filter(i => i !== studentId));
+    };
+    apply(!wasAbsent);
+    registerUndo(
+      wasAbsent ? `${stName}: wieder anwesend` : `${stName}: fehlt`,
+      () => apply(wasAbsent)
+    );
   };
 
   const finishAbsent = () => {
@@ -695,7 +791,50 @@ function App() {
     ));
   };
 
-  const goHome = () => { setActiveCourse(null); setSessionPhase("select"); setActiveStudent(null); setLastAction(null); };
+  const goHome = () => { setActiveCourse(null); setSessionPhase("select"); setActiveStudent(null); setLastAction(null); setNameFilter(""); setHwFilter(""); };
+
+  // Die Kursblöcke des Exports wurden zweimal inline gebaut und wichen in der
+  // Kopfzeile voneinander ab — dort steckte die verrutschte Spalte (F23).
+  // Eine Quelle, ein Trennzeichen.
+  const courseCsvBlock = (course) => {
+    const criteria = getCriteria(course.name);
+    const lines = [`Name;${criteria.map(c => c.short).join(";")};HA-Quote;Fehltage;Gesamt`];
+    course.students.forEach(st => {
+      const obs = obsFor(course.name, st.id);
+      const critSummary = criteria.map(crit => {
+        const pos = obs.filter(o => o.criterionId === crit.id && o.rating === "+").length;
+        const neg = obs.filter(o => o.criterionId === crit.id && o.rating === "-").length;
+        return (pos === 0 && neg === 0) ? "-" : `+${pos}/-${neg}`;
+      });
+      let hwTotal = 0, hwDone = 0;
+      Object.entries(homework).forEach(([key, val]) => {
+        if (key.endsWith(`_${course.name}`)) {
+          const status = val[st.id];
+          if (status === undefined) return;  // abwesend, oder noch nicht im Kurs
+          hwTotal++;
+          if (status === "done") hwDone++;
+          else if (status === "half") hwDone += 0.5;
+        }
+      });
+      const hwPct = hwTotal > 0 ? `${Math.round((hwDone/hwTotal)*100)}%` : "-";
+      let absentCount = 0;
+      Object.entries(absences).forEach(([key, ids]) => {
+        if (key.endsWith(`_${course.name}`) && ids.includes(st.id)) absentCount++;
+      });
+      lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${absentCount};${obs.length}`);
+    });
+    return lines;
+  };
+
+  const downloadCsv = (lines, filename) => {
+    const csv  = "\uFEFF" + lines.join("\r\n");   // BOM: sonst zerlegt Excel die Umlaute
+    const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
 
   // ── JSON BACKUP ──────────────────────────────────────────────────────────
   const downloadBackup = (filenamePrefix) => {
@@ -768,9 +907,7 @@ function App() {
   const MIN_DAYS     = 3;
 
   const getGradeProposal = (courseName, studentId) => {
-    const obs = observations.filter(o =>
-      o.course === courseName && o.studentId === studentId && isRating(o)
-    );
+    const obs = obsFor(courseName, studentId).filter(isRating);
     const days = new Set(obs.map(o => o.date)).size;
     if (obs.length < MIN_ENTRIES || days < MIN_DAYS) return null;
     const pos = obs.filter(o => o.rating === "+").length;
@@ -784,9 +921,7 @@ function App() {
   };
 
   const getObsProgress = (courseName, studentId) => {
-    const obs = observations.filter(o =>
-      o.course === courseName && o.studentId === studentId && isRating(o)
-    );
+    const obs = obsFor(courseName, studentId).filter(isRating);
     const days = new Set(obs.map(o => o.date)).size;
     return { count: obs.length, days, ready: obs.length >= MIN_ENTRIES && days >= MIN_DAYS };
   };
@@ -798,60 +933,99 @@ function App() {
     return (
       <div style={S.page}>
         {backupDue && (
-          <div style={{ background:C.amberSoft, border:`1px solid ${C.amber}`, borderRadius:12, padding:"12px 14px", marginBottom:12, cursor:"pointer" }}
+          <button style={{ background:C.amberSoft, border:`1px solid ${C.amber}`, borderRadius:12, padding:"14px 16px", marginBottom:12, cursor:"pointer", width:"100%", textAlign:"left", WebkitAppearance:"none" }}
             onClick={runDueBackup}>
-            <div style={{ fontSize:13, fontWeight:600, color:C.amber, marginBottom:2 }}>Sicherung fällig</div>
-            <div style={{ fontSize:12, color:C.textDim }}>
+            <span style={{ display:"block", fontSize:15, fontWeight:600, color:C.amber, marginBottom:2 }}>Sicherung fällig</span>
+            <span style={{ display:"block", fontSize:13, color:C.textDim }}>
               Tippen lädt die Backup-Datei herunter{lastAutoBackup
                 ? ` — zuletzt vor ${Math.floor((Date.now()-new Date(lastAutoBackup).getTime())/86400000)} Tagen`
                 : ""}.
-            </div>
-          </div>
+            </span>
+          </button>
         )}
 
         {currentSlot && (
-          <div style={{ ...S.courseCard(true), marginBottom:16 }} onClick={() => startSession(currentSlot.course)}>
-            <div style={{ fontSize:11, color:C.accent, fontWeight:700, marginBottom:4, letterSpacing:"0.06em" }}>JETZT LÄUFT</div>
-            <div style={S.courseTitle}>{currentSlot.course}</div>
-            <div style={S.courseMeta}>{currentSlot.start}–{currentSlot.end} · {currentSlot.type==="double"?"Doppelstunde":"Einzelstunde"}</div>
-            <button style={S.btn("primary")}>Stunde starten →</button>
-          </div>
+          <button style={{ ...S.courseCard(true), marginBottom:16, width:"100%", textAlign:"left", WebkitAppearance:"none" }}
+            onClick={() => startSession(currentSlot.course)}>
+            <span style={{ display:"block", fontSize:13, color:C.accent, fontWeight:700, marginBottom:4, letterSpacing:"0.06em" }}>JETZT LÄUFT</span>
+            <span style={{ display:"block", ...S.courseTitle, color:C.text }}>{currentSlot.course}</span>
+            <span style={{ display:"block", ...S.courseMeta }}>{currentSlot.start}–{currentSlot.end} · {currentSlot.type==="double"?"Doppelstunde":"Einzelstunde"}</span>
+            <span style={{ ...S.btn("primary"), display:"block", textAlign:"center" }}>Stunde starten →</span>
+          </button>
         )}
 
         {daySlots.length > 0 && (
           <>
             <div style={S.sectionLbl}>Heute — {DAYS[new Date().getDay()]}</div>
             {daySlots.filter(sl => sl !== currentSlot).map((sl,i) => (
-              <div key={i} style={S.courseCard(false)} onClick={() => startSession(sl.course)}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <div>
-                    <div style={S.courseTitle}>{sl.course}</div>
-                    <div style={S.courseMeta}>{sl.start}–{sl.end} · {sl.type==="double"?"DS":"ES"}</div>
-                  </div>
+              <button key={i} style={{ ...S.courseCard(false), width:"100%", textAlign:"left", WebkitAppearance:"none" }}
+                onClick={() => startSession(sl.course)}>
+                <span style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span>
+                    <span style={{ display:"block", ...S.courseTitle, color:C.text }}>{sl.course}</span>
+                    <span style={{ display:"block", ...S.courseMeta }}>{sl.start}–{sl.end} · {sl.type==="double"?"DS":"ES"}</span>
+                  </span>
                   {ENGLISH_COURSES.includes(sl.course) && <span style={S.badge("blue")}>FS</span>}
-                </div>
-              </div>
+                </span>
+              </button>
             ))}
           </>
         )}
 
         {!currentSlot && daySlots.length === 0 && (
           <div style={{ textAlign:"center", padding:"60px 20px", color:C.textDim }}>
-            <div style={{ fontSize:36, marginBottom:12 }}>📋</div>
-            <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:6 }}>Kein Unterricht heute</div>
-            <div style={{ fontSize:13 }}>Wähle einen Kurs manuell unten aus oder schau in die Übersicht.</div>
+            <div style={{ fontSize:17, fontWeight:600, color:C.text, marginBottom:6 }}>Kein Unterricht heute</div>
+            <div style={{ fontSize:15 }}>Wähle einen Kurs manuell unten aus oder schau in die Übersicht.</div>
           </div>
         )}
 
         <div style={S.sectionLbl}>Alle Kurse</div>
         {COURSES_META.filter(c => c.criteriaType !== "none").map((c,i) => (
-          <div key={i} style={S.courseCard(false)} onClick={() => startSession(c.name)}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div style={S.courseTitle}>{c.name}</div>
+          <button key={i} style={{ ...S.courseCard(false), width:"100%", textAlign:"left", WebkitAppearance:"none" }}
+            onClick={() => startSession(c.name)}>
+            <span style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span style={{ ...S.courseTitle, color:C.text }}>{c.name}</span>
               {c.criteriaType==="fremdsprachen" && <span style={S.badge("blue")}>FS</span>}
-            </div>
-          </div>
+            </span>
+          </button>
         ))}
+      </div>
+    );
+  };
+
+  // Fehlende → Hausaufgaben → Beobachten lief als Wizard ohne Anzeige und ohne
+  // Rückweg: wer versehentlich „Nein — direkt zum Beobachten" tippte, konnte die
+  // HA-Kontrolle nicht mehr nachholen. Erledigte Schritte führen jetzt zurück.
+  const PHASES = [
+    { id:"absent",   label:"Fehlende" },
+    { id:"homework", label:"Hausaufg." },
+    { id:"observe",  label:"Beobachten" },
+  ];
+
+  const renderPhaseSteps = () => {
+    const idx = PHASES.findIndex(p => p.id === sessionPhase);
+    if (idx < 0) return null;
+    return (
+      <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+        {PHASES.map((ph, i) => {
+          const state = i < idx ? "done" : i === idx ? "current" : "todo";
+          const reachable = state === "done";
+          return (
+            <button key={ph.id}
+              onClick={() => reachable && setSessionPhase(ph.id)}
+              aria-current={state === "current" ? "step" : undefined}
+              aria-disabled={!reachable && state !== "current"}
+              style={{ flex:1, minHeight:44, padding:"8px 4px", borderRadius:8,
+                       cursor: reachable ? "pointer" : "default",
+                       WebkitAppearance:"none", textAlign:"center",
+                       background: state === "current" ? C.accentSoft : "transparent",
+                       border:`1px solid ${state === "todo" ? C.border : C.accent}`,
+                       color: state === "todo" ? C.textMuted : C.accent,
+                       fontSize:13, fontWeight: state === "current" ? 700 : 500 }}>
+              {state === "done" ? "✓ " : ""}{ph.label}
+            </button>
+          );
+        })}
       </div>
     );
   };
@@ -861,10 +1035,9 @@ function App() {
   const renderMissingCourse = () => (
     <div style={S.page}>
       <div style={{ textAlign:"center", padding:"48px 20px" }}>
-        <div style={{ fontSize:36, marginBottom:12 }}>🤔</div>
-        <div style={{ fontSize:15, fontWeight:600, marginBottom:6 }}>Kurs nicht gefunden</div>
-        <div style={{ fontSize:13, color:C.textDim, lineHeight:"1.6" }}>
-          „{activeCourse}" steht im Stundenplan, aber nicht in deinen gespeicherten
+        <div style={{ fontSize:17, fontWeight:600, marginBottom:6 }}>Kurs nicht gefunden</div>
+        <div style={{ fontSize:15, color:C.textDim, lineHeight:"1.6" }}>
+          „{activeCourse}“ steht im Stundenplan, aber nicht in deinen gespeicherten
           Kursen. Meist heißt das: Der Kurs wurde umbenannt. Deine Einträge sind nicht
           verloren — sie hängen am alten Namen.
         </div>
@@ -880,15 +1053,26 @@ function App() {
     if (!course) return renderMissingCourse();
     return (
       <div style={S.page}>
-        <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
-        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 4px" }}>Wer fehlt heute?</h2>
-        <p style={{ fontSize:13, color:C.textDim, marginBottom:16 }}>Antippen = fehlt · nochmal = wieder da</p>
+        <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
+        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 10px" }}>Wer fehlt heute?</h2>
+        {renderPhaseSteps()}
+        <p style={{ fontSize:15, color:C.textDim, marginBottom:16 }}>Antippen = fehlt · nochmal = wieder da</p>
 
+        {course.students.length === 0 && (
+          <div style={{ background:C.amberSoft, border:`1px solid ${C.amber}`, borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
+            <div style={{ fontSize:15, fontWeight:600, color:C.amber, marginBottom:4 }}>Noch keine Schülerliste</div>
+            <div style={{ fontSize:13, color:C.textDim }}>
+              Unter „Kurse“ die Namen einmal importieren — danach läuft alles Weitere.
+            </div>
+          </div>
+        )}
         {course.students.map(st => {
           const absent = todayAbsent.includes(st.id);
           return (
-            <div key={st.id}
-              style={{ ...S.row, background:absent?C.redSoft:C.card, borderColor:absent?C.red:C.border, cursor:"pointer" }}
+            <button key={st.id}
+              aria-pressed={absent}
+              style={{ ...S.row, width:"100%", textAlign:"left", WebkitAppearance:"none",
+                       background:absent?C.redSoft:C.card, borderColor:absent?C.red:C.border, cursor:"pointer" }}
               onClick={() => {
                 const wasAbsent = absent;
                 setTodayAbsent(prev => wasAbsent ? prev.filter(id=>id!==st.id) : [...prev, st.id]);
@@ -898,9 +1082,9 @@ function App() {
                   () => setTodayAbsent(prev => wasAbsent ? [...prev, st.id] : prev.filter(id=>id!==st.id))
                 );
               }}>
-              <span style={{ fontSize:14, fontWeight:500, color:absent?C.red:C.text }}>{st.name}</span>
-              {absent && <span style={{ fontSize:12, color:C.red, fontWeight:700 }}>fehlt</span>}
-            </div>
+              <span style={{ fontSize:15, fontWeight:500, color:absent?C.red:C.text }}>{st.name}</span>
+              {absent && <span style={{ fontSize:13, color:C.red, fontWeight:700 }}>fehlt</span>}
+            </button>
           );
         })}
 
@@ -910,7 +1094,7 @@ function App() {
             Speichern & weiter {todayAbsent.length > 0 ? `(${todayAbsent.length} fehlt)` : "→"}
           </button>
         </div>
-        <p style={{ fontSize:11, color:C.textMuted, textAlign:"center", marginTop:8 }}>
+        <p style={{ fontSize:13, color:C.textMuted, textAlign:"center", marginTop:8 }}>
           Wird automatisch gespeichert.
         </p>
       </div>
@@ -929,25 +1113,51 @@ function App() {
 
     return (
       <div style={S.page}>
-        <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
-        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 4px" }}>Hausaufgaben</h2>
+        <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
+        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 10px" }}>Hausaufgaben</h2>
+        {renderPhaseSteps()}
 
         {!hwActive ? (
           <>
-            <p style={{ fontSize:13, color:C.textDim, marginBottom:16 }}>Gab es Hausaufgaben auf?</p>
+            <p style={{ fontSize:15, color:C.textDim, marginBottom:16 }}>Gab es Hausaufgaben auf?</p>
             <button style={S.btn("green")} onClick={activateHw}>✓ Ja — HA kontrollieren</button>
             <button style={S.btn("ghost")} onClick={() => setSessionPhase("observe")}>Nein — direkt zum Beobachten</button>
           </>
         ) : (
           <>
-            <p style={{ fontSize:13, color:C.textDim, marginBottom:2 }}>
+            <p style={{ fontSize:15, color:C.textDim, marginBottom:2 }}>
               Alle auf ✓ gesetzt — nur Ausnahmen antippen.
             </p>
-            <p style={{ fontSize:12, color:C.textMuted, marginBottom:14 }}>
+            <p style={{ fontSize:15, color:C.textMuted, marginBottom:12 }}>
               {present.length} anwesend · {exCount} nicht/teilweise
             </p>
 
-            {present.map(st => {
+            {/* Der gute Default („alles auf ✓") sparte das Tippen, nicht das Suchen. */}
+            <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+              <input value={hwFilter} {...inputFocus}
+                onChange={e => setHwFilter(e.target.value)}
+                aria-label="Schüler suchen"
+                placeholder="Wer hat nicht? Name tippen…"
+                style={{ flex:1, padding:"12px 12px", background:C.surface,
+                         border:`1px solid ${C.border}`, borderRadius:8, color:C.text,
+                         fontSize:15, outline:"none" }} />
+              {hwFilter && (
+                <button aria-label="Suche zurücksetzen" onClick={() => setHwFilter("")}
+                  style={{ ...S.btnSm("ghost"), padding:"12px 14px" }}>
+                  <Icon name="x" size={14} color={C.textDim} />
+                </button>
+              )}
+            </div>
+
+            {/* Bereits eingetragene Ausnahmen bleiben immer sichtbar, auch beim Filtern —
+                sonst verliert man aus dem Blick, was man schon erfasst hat. */}
+            {present
+              .filter(st => {
+                const q = hwFilter.trim().toLowerCase();
+                if (!q) return true;
+                return st.name.toLowerCase().includes(q) || (hwExceptions[st.id] || "done") !== "done";
+              })
+              .map(st => {
               const status = hwExceptions[st.id] || "done";
               const stName = st.name.split(" ")[0];
               const setStatus = (newStatus, label) => {
@@ -960,7 +1170,7 @@ function App() {
               };
               return (
                 <div key={st.id} style={{ ...S.row, borderColor:status==="not"?C.red:status==="half"?C.amber:C.border, background:status==="not"?C.redSoft:status==="half"?C.amberSoft:C.card }}>
-                  <span style={{ fontSize:14, fontWeight:500 }}>{st.name}</span>
+                  <span style={{ fontSize:15, fontWeight:500 }}>{st.name}</span>
                   <div style={{ display:"flex", gap:4 }}>
                     <button style={S.btnSm(status==="done"?"green":"ghost")}
                       onClick={() => setStatus("done", "✓")}>✓</button>
@@ -972,8 +1182,8 @@ function App() {
                 </div>
               );
             })}
-            <button style={{ ...S.btn("primary"), marginTop:16 }} onClick={finishHomework}>Speichern & weiter →</button>
-            <p style={{ fontSize:11, color:C.textMuted, textAlign:"center", marginTop:6 }}>Wird automatisch gespeichert.</p>
+            <button style={{ ...S.btn("primary"), marginTop:16 }} onClick={() => { setHwFilter(""); finishHomework(); }}>Speichern & weiter →</button>
+            <p style={{ fontSize:13, color:C.textMuted, textAlign:"center", marginTop:6 }}>Wird automatisch gespeichert.</p>
           </>
         )}
       </div>
@@ -995,7 +1205,7 @@ function App() {
     // ── Detail view — Grid ──
     if (activeStudent) {
       const student  = course.students.find(st => st.id === activeStudent);
-      const todayObs = observations.filter(o => o.course === activeCourse && o.studentId === activeStudent && o.date === today);
+      const todayObs = obsFor(activeCourse, activeStudent).filter(o => o.date === today);
       const areas    = [...new Set(criteria.map(c => c.area))];
       const doneCount = todayObs.filter(isRating).length;
 
@@ -1003,92 +1213,22 @@ function App() {
         <div style={S.page}>
           {/* Header */}
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-            <button style={{ background:"none", border:"none", color:C.accent, fontSize:13, cursor:"pointer", padding:0 }}
+            <button style={{ background:"none", border:"none", color:C.accent, fontSize:15, cursor:"pointer", padding:0 }}
               onClick={() => setActiveStudent(null)}>← Zurück</button>
-            <span style={{ fontSize:12, color:C.textDim }}>
+            <span style={{ fontSize:13, color:C.textDim }}>
               {doneCount}/{criteria.length} bewertet
             </span>
           </div>
 
-          <h2 style={{ fontSize:22, fontWeight:700, margin:"0 0 2px" }}>{student?.name}</h2>
-          <p style={{ fontSize:12, color:C.textDim, marginBottom:8 }}>{activeCourse}</p>
-
-          {/* Zwischenstand / Notenvorschlag */}
-          {(() => {
-            const grade = getGradeProposal(activeCourse, activeStudent);
-            const prog  = getObsProgress(activeCourse, activeStudent);
-            const criteria = getCriteria(activeCourse);
-
-            // Tendenz pro Kriterium berechnen
-            const critTendencies = criteria.map(crit => {
-              const critObs = observations.filter(o =>
-                o.course === activeCourse && o.studentId === activeStudent && o.criterionId === crit.id
-              );
-              const pos = critObs.filter(o => o.rating === "+").length;
-              const neg = critObs.filter(o => o.rating === "-").length;
-              const total = pos + neg;
-              if (total === 0) return { crit, label: null, color: C.textMuted };
-              const ratio = pos / total;
-              if (ratio >= 0.70) return { crit, label: "überwiegend positiv",  color: C.green };
-              if (ratio >= 0.45) return { crit, label: "ausgeglichen",          color: C.amber };
-              return                   { crit, label: "überwiegend schwach",   color: C.red   };
-            }).filter(t => t.label !== null);
-
-            // Vollständiger Notenvorschlag
-            if (grade) return (
-              <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:10, padding:"12px 14px", marginBottom:16 }}>
-                <div style={{ fontSize:10, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:6 }}>NOTENVORSCHLAG</div>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                  <span style={{ fontSize:16, fontWeight:700, color:grade.color }}>Note {grade.grade}</span>
-                  <span style={{ fontSize:11, color:C.textDim }}>{grade.label}</span>
-                </div>
-                {critTendencies.map(t => (
-                  <div key={t.crit.id} style={{ display:"flex", justifyContent:"space-between", paddingTop:3 }}>
-                    <span style={{ fontSize:11, color:C.textDim }}>{t.crit.short}</span>
-                    <span style={{ fontSize:11, fontWeight:600, color:t.color }}>{t.label}</span>
-                  </div>
-                ))}
-                <div style={{ fontSize:10, color:C.textMuted, marginTop:8, paddingTop:6, borderTop:`1px solid ${C.border}` }}>
-                  {prog.count} Einträge / {prog.days} Tage · Pädagogische Einschätzung entscheidet.
-                </div>
-              </div>
-            );
-
-            // Vorläufige Tendenz ab 1 Eintrag
-            if (prog.count > 0) return (
-              <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px", marginBottom:16 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                  <div style={{ fontSize:10, color:C.textDim, fontWeight:700, letterSpacing:"0.06em" }}>ZWISCHENSTAND</div>
-                  <div style={{ fontSize:10, color:C.amber }}>⚠ {prog.count} Eintr. / {prog.days} Tage — vorläufig</div>
-                </div>
-                {critTendencies.length > 0 ? critTendencies.map(t => (
-                  <div key={t.crit.id} style={{ display:"flex", justifyContent:"space-between", paddingTop:3 }}>
-                    <span style={{ fontSize:11, color:C.textDim }}>{t.crit.short}</span>
-                    <span style={{ fontSize:11, fontWeight:600, color:t.color }}>{t.label}</span>
-                  </div>
-                )) : (
-                  <div style={{ fontSize:11, color:C.textMuted }}>Noch keine Kriterien bewertet.</div>
-                )}
-                <div style={{ fontSize:10, color:C.textMuted, marginTop:6 }}>
-                  Notenvorschlag ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} Tagen.
-                </div>
-              </div>
-            );
-
-            // Noch gar keine Einträge
-            return (
-              <div style={{ fontSize:11, color:C.textMuted, marginBottom:16 }}>
-                Noch keine Einträge für diesen Schüler.
-              </div>
-            );
-          })()}
+          <h2 style={{ fontSize:20, fontWeight:700, margin:"0 0 2px" }}>{student?.name}</h2>
+          <p style={{ fontSize:13, color:C.textDim, marginBottom:8 }}>{activeCourse}</p>
 
           {/* Kriterien-Grid pro Bereich */}
           {areas.map(area => {
             const areaCriteria = criteria.filter(c => c.area === area);
             return (
-              <div key={area} style={{ marginBottom:20 }}>
-                <div style={S.sectionLbl}>{area}</div>
+              <div key={area} style={{ marginBottom:12 }}>
+                <div style={{ ...S.sectionLbl, marginTop:12 }}>{area}</div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                   {areaCriteria.map(crit => {
                     const todayEntry = todayObs.find(o => o.criterionId === crit.id);
@@ -1104,42 +1244,45 @@ function App() {
                         flexDirection:"column",
                         gap:8,
                       }}>
-                        {/* Kurzname + ⓘ */}
-                        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:4 }}>
-                          <div style={{
-                            fontSize:12, fontWeight:700,
+                        {/* Kurzname + ⓘ — zusammen ein Ziel. Das ⓘ allein maß 13x13pt
+                            und lag 4pt neben dem +; ein Daumenversatz öffnete das Modal
+                            statt zu bewerten. */}
+                        <button
+                          onClick={() => setInfoCrit(crit)}
+                          style={{
+                            display:"flex", alignItems:"center", justifyContent:"space-between",
+                            gap:4, width:"100%", minHeight:28, textAlign:"left",
+                            background:"none", border:"none", padding:0, cursor:"pointer",
+                            WebkitAppearance:"none",
+                          }}>
+                          <span style={{
+                            fontSize:15, fontWeight:700,
                             color: isPos ? C.green : isNeg ? C.red : C.text,
                             lineHeight:"1.3", flex:1,
-                          }}>{crit.short}</div>
-                          <button
-                            onClick={() => setInfoCrit(crit)}
-                            style={{
-                              background:"none", border:"none", cursor:"pointer",
-                              color:C.textMuted, fontSize:13, padding:"0 0 0 2px",
-                              lineHeight:1, flexShrink:0, WebkitAppearance:"none",
-                            }}>ⓘ</button>
-                        </div>
+                          }}>{crit.short}</span>
+                          <span style={{ color:C.textDim, fontSize:15, lineHeight:1, flexShrink:0 }}>ⓘ</span>
+                        </button>
 
-                        {/* + / − Buttons */}
+                        {/* + / − Buttons — 13px Polsterung ergibt 44pt Tapfläche */}
                         <div style={{ display:"flex", gap:5 }}>
                           <button
                             onClick={() => addObs(activeStudent, crit.id, "+")}
                             style={{
-                              flex:1, padding:"8px 0",
+                              flex:1, padding:"13px 0",
                               background: isPos ? C.green : "transparent",
-                              color: isPos ? "#fff" : C.green,
+                              color: isPos ? C.onFill : C.green,
                               border: `1px solid ${C.green}`,
-                              borderRadius:7, fontSize:16, fontWeight:700,
+                              borderRadius:7, fontSize:17, fontWeight:700,
                               cursor:"pointer", WebkitAppearance:"none",
                             }}>+</button>
                           <button
                             onClick={() => addObs(activeStudent, crit.id, "-")}
                             style={{
-                              flex:1, padding:"8px 0",
+                              flex:1, padding:"13px 0",
                               background: isNeg ? C.red : "transparent",
-                              color: isNeg ? "#fff" : C.red,
+                              color: isNeg ? C.onFill : C.red,
                               border: `1px solid ${C.red}`,
-                              borderRadius:7, fontSize:16, fontWeight:700,
+                              borderRadius:7, fontSize:17, fontWeight:700,
                               cursor:"pointer", WebkitAppearance:"none",
                             }}>−</button>
                         </div>
@@ -1153,17 +1296,42 @@ function App() {
 
           {/* Notiz-Verlauf */}
           {(() => {
-            const pastNotes = [...observations]
-              .filter(o => o.course === activeCourse && o.studentId === activeStudent && o.criterionId === "note")
+            const pastNotes = [...obsFor(activeCourse, activeStudent)]
+              .filter(o => o.criterionId === "note")
               .sort((a,b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
             if (pastNotes.length === 0) return null;
             return (
               <div style={{ marginBottom:8 }}>
                 <div style={S.sectionLbl}>Bisherige Notizen ({pastNotes.length})</div>
                 {pastNotes.map(n => (
-                  <div key={n.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8, padding:"8px 12px", background:C.surface, borderRadius:8, marginBottom:5, borderLeft:`3px solid ${C.teal||C.accent}` }}>
-                    <span style={{ fontSize:12, color:C.text, flex:1, lineHeight:"1.5" }}>{n.note}</span>
-                    <span style={{ fontSize:10, color:C.textMuted, flexShrink:0, marginTop:1 }}>{n.date}</span>
+                  <div key={n.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, padding:"8px 12px", background:C.surface, borderRadius:8, marginBottom:5, borderLeft:`3px solid ${C.accent}` }}>
+                    <span style={{ fontSize:15, color:C.text, flex:1, lineHeight:"1.5" }}>{n.note}</span>
+                    <span style={{ fontSize:13, color:C.textMuted, flexShrink:0 }}>{n.date}</span>
+                    {confirmNoteId === n.id ? (
+                      <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                        <button aria-label="Notiz endgültig löschen"
+                          style={{ ...S.btnSm("red"), padding:"11px 12px" }}
+                          onClick={() => {
+                            setObservations(prev => prev.filter(o => o.id !== n.id));
+                            setConfirmNoteId(null);
+                            registerUndo("Notiz gelöscht", () => setObservations(prev => [...prev, n]));
+                          }}>
+                          <Icon name="check" size={13} color={C.red} />
+                        </button>
+                        <button aria-label="Löschen abbrechen"
+                          style={{ ...S.btnSm("ghost"), padding:"11px 12px" }}
+                          onClick={() => setConfirmNoteId(null)}>
+                          <Icon name="x" size={13} color={C.textDim} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button aria-label={`Notiz vom ${n.date} löschen`}
+                        onClick={() => setConfirmNoteId(n.id)}
+                        style={{ background:"none", border:"none", cursor:"pointer", padding:11,
+                                 flexShrink:0, WebkitAppearance:"none" }}>
+                        <Icon name="trash" size={14} color={C.textMuted} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1173,8 +1341,9 @@ function App() {
           <div style={{ ...S.sectionLbl, marginTop:4 }}>Neue Notiz (optional)</div>
           <div style={{ display:"flex", gap:8 }}>
             <input
-              style={{ flex:1, padding:"11px 12px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:13, outline:"none" }}
+              style={{ flex:1, padding:"11px 12px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:15, outline:"none" }}
               placeholder="Kurze Notiz…"
+              {...inputFocus}
               value={noteText}
               onChange={e => setNoteText(e.target.value)}
               onKeyDown={e => {
@@ -1198,6 +1367,77 @@ function App() {
           <button style={{ ...S.btn("ghost"), marginTop:8 }} onClick={() => setActiveStudent(null)}>
             ← Nächste/r Schüler/in
           </button>
+
+          {/* Zwischenstand / Notenvorschlag — steht bewusst hinter den Knöpfen.
+              Er kostet rund 240pt und schob damit die Hälfte der Kriterien unter
+              die Falz; gebraucht wird er im Gespräch und am Halbjahresende,
+              nie mitten in der Stunde. */}
+          {(() => {
+            const grade = getGradeProposal(activeCourse, activeStudent);
+            const prog  = getObsProgress(activeCourse, activeStudent);
+            const criteria = getCriteria(activeCourse);
+
+            // Tendenz pro Kriterium berechnen
+            const critTendencies = criteria.map(crit => {
+              const critObs = obsFor(activeCourse, activeStudent).filter(o => o.criterionId === crit.id);
+              const pos = critObs.filter(o => o.rating === "+").length;
+              const neg = critObs.filter(o => o.rating === "-").length;
+              const total = pos + neg;
+              if (total === 0) return { crit, label: null, color: C.textMuted };
+              const ratio = pos / total;
+              if (ratio >= 0.70) return { crit, label: "überwiegend positiv",  color: C.green };
+              if (ratio >= 0.45) return { crit, label: "ausgeglichen",          color: C.amber };
+              return                   { crit, label: "überwiegend schwach",   color: C.red   };
+            }).filter(t => t.label !== null);
+
+            // Vollständiger Notenvorschlag
+            if (grade) return (
+              <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:10, padding:"12px 14px", marginTop:20 }}>
+                <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:6 }}>NOTENVORSCHLAG</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <span style={{ fontSize:17, fontWeight:700, color:grade.color }}>Note {grade.grade}</span>
+                  <span style={{ fontSize:13, color:C.textDim }}>{grade.label}</span>
+                </div>
+                {critTendencies.map(t => (
+                  <div key={t.crit.id} style={{ display:"flex", justifyContent:"space-between", paddingTop:3 }}>
+                    <span style={{ fontSize:13, color:C.textDim }}>{t.crit.short}</span>
+                    <span style={{ fontSize:13, fontWeight:600, color:t.color }}>{t.label}</span>
+                  </div>
+                ))}
+                <div style={{ fontSize:13, color:C.textMuted, marginTop:8, paddingTop:6, borderTop:`1px solid ${C.border}` }}>
+                  {prog.count} Einträge / {prog.days} Tage · Pädagogische Einschätzung entscheidet.
+                </div>
+              </div>
+            );
+
+            // Vorläufige Tendenz ab 1 Eintrag
+            if (prog.count > 0) return (
+              <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px", marginTop:20 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                  <div style={{ fontSize:13, color:C.textDim, fontWeight:700, letterSpacing:"0.06em" }}>ZWISCHENSTAND</div>
+                  <div style={{ fontSize:13, color:C.amber }}>⚠ {prog.count} Eintr. / {prog.days} Tage — vorläufig</div>
+                </div>
+                {critTendencies.length > 0 ? critTendencies.map(t => (
+                  <div key={t.crit.id} style={{ display:"flex", justifyContent:"space-between", paddingTop:3 }}>
+                    <span style={{ fontSize:13, color:C.textDim }}>{t.crit.short}</span>
+                    <span style={{ fontSize:13, fontWeight:600, color:t.color }}>{t.label}</span>
+                  </div>
+                )) : (
+                  <div style={{ fontSize:13, color:C.textMuted }}>Noch keine Kriterien bewertet.</div>
+                )}
+                <div style={{ fontSize:13, color:C.textMuted, marginTop:6 }}>
+                  Notenvorschlag ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} Tagen.
+                </div>
+              </div>
+            );
+
+            // Noch gar keine Einträge
+            return (
+              <div style={{ fontSize:13, color:C.textMuted, marginTop:20 }}>
+                Noch keine Einträge für diesen Schüler.
+              </div>
+            );
+          })()}
         </div>
       );
     }
@@ -1209,9 +1449,9 @@ function App() {
       const saved = topics[tKey] || "";
       return (
         <div style={S.page}>
-          <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
+          <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
           <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 10px" }}>Stunde läuft</h2>
-          <div style={{ fontSize:13, color:C.textDim, lineHeight:"1.6", marginBottom:16 }}>
+          <div style={{ fontSize:15, color:C.textDim, lineHeight:"1.6", marginBottom:16 }}>
             Für diesen Kurs werden keine Bewertungen erfasst. Anwesenheit ist gespeichert —
             trag nur noch das Thema fürs Klassenbuch ein.
           </div>
@@ -1222,18 +1462,21 @@ function App() {
                 onChange={e => setTopicDraft(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") { setTopicFor(activeCourse, topicDraft); setTopicEditing(false); }
                                   if (e.key === "Escape") setTopicEditing(false); }}
-                placeholder="Thema dieser Stunde"
-                style={{ flex:1, padding:"9px 11px", background:C.surface, border:`1px solid ${C.accent}`,
-                         borderRadius:8, color:C.text, fontSize:13, outline:"none" }} />
+                placeholder="Thema dieser Stunde" {...inputFocus}
+                style={{ flex:1, padding:"12px 11px", background:C.surface, border:`1px solid ${C.accent}`,
+                         borderRadius:8, color:C.text, fontSize:15, outline:"none" }} />
               <button style={S.btnSm("primary")}
                 onClick={() => { setTopicFor(activeCourse, topicDraft); setTopicEditing(false); }}>✓</button>
             </div>
           ) : (
-            <div onClick={() => { setTopicDraft(saved); setTopicEditing(true); }}
-              style={{ fontSize:13, color: saved ? C.text : C.textMuted, cursor:"pointer",
-                       padding:"10px 12px", borderRadius:8, border:`1px dashed ${C.border}` }}>
+            <button aria-label="Thema fürs Klassenbuch eintragen"
+              onClick={() => { setTopicDraft(saved); setTopicEditing(true); }}
+              style={{ fontSize:15, color: saved ? C.text : C.textMuted, cursor:"pointer",
+                       width:"100%", textAlign:"left", minHeight:44, background:"none",
+                       WebkitAppearance:"none",
+                       padding:"12px", borderRadius:8, border:`1px dashed ${C.border}` }}>
               {saved ? <><span style={{ color:C.textDim }}>Thema: </span>{saved}</> : "+ Thema fürs Klassenbuch"}
-            </div>
+            </button>
           )}
 
           <button style={{ ...S.btn("ghost"), marginTop:20 }} onClick={goHome}>✓ Stunde beenden</button>
@@ -1244,8 +1487,36 @@ function App() {
     // ── List view ──
     return (
       <div style={S.page}>
-        <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
-        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 12px" }}>Wen beobachten?</h2>
+        <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
+        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 10px" }}>Wen beobachten?</h2>
+        {renderPhaseSteps()}
+
+        {/* Tagesanker — beantwortet „wo bin ich?" mit einem Blick, statt es dem
+            Gedächtnis zu überlassen. Rechts daneben die Anwesenheit, weil ein
+            Nachzügler sonst bis Stundenende als fehlend gebucht bleibt. */}
+        {(() => {
+          const doneCount = available.filter(st => getToday(activeCourse, st.id).done).length;
+          const pct = available.length ? Math.round(doneCount / available.length * 100) : 0;
+          return (
+            <div style={{ marginBottom:14 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6, gap:8 }}>
+                <span style={{ fontSize:15, color:C.text, fontWeight:600 }}>
+                  {doneCount} von {available.length} heute erfasst
+                </span>
+                <button onClick={() => setShowAttendance(true)}
+                  style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:20,
+                           padding:"7px 12px", fontSize:13, color:C.textDim, cursor:"pointer",
+                           WebkitAppearance:"none", flexShrink:0 }}>
+                  {absentIds.length ? `${absentIds.length} ${absentIds.length === 1 ? "fehlt" : "fehlen"}` : "vollzählig"} · ändern
+                </button>
+              </div>
+              <div style={{ height:6, background:C.border, borderRadius:3, overflow:"hidden" }}>
+                <div style={{ height:"100%", width:`${pct}%`, background: pct===100 ? C.green : C.accent,
+                              borderRadius:3, transition:"width 0.3s" }} />
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Thema — steht neben dem Ablauf, blockiert ihn nie. Leer lassen kostet nichts. */}
         {(() => {
@@ -1253,12 +1524,15 @@ function App() {
           const saved = topics[tKey] || "";
           const save  = (v) => { setTopicFor(activeCourse, v); setTopicEditing(false); };
           if (!topicEditing) return (
-            <div onClick={() => { setTopicDraft(saved); setTopicEditing(true); }}
-              style={{ fontSize:12, color: saved ? C.text : C.textMuted, cursor:"pointer",
-                       padding:"7px 10px", marginBottom:14, borderRadius:8,
+            <button aria-label="Thema fürs Klassenbuch eintragen"
+              onClick={() => { setTopicDraft(saved); setTopicEditing(true); }}
+              style={{ fontSize:15, color: saved ? C.text : C.textMuted, cursor:"pointer",
+                       width:"100%", textAlign:"left", minHeight:44, background:"none",
+                       padding:"12px", marginBottom:14, borderRadius:8,
+                       WebkitAppearance:"none",
                        border:`1px dashed ${C.border}` }}>
               {saved ? <><span style={{ color:C.textDim }}>Thema: </span>{saved}</> : "+ Thema fürs Klassenbuch (optional)"}
-            </div>
+            </button>
           );
           const chips = recentTopics(activeCourse).filter(t => t !== topicDraft);
           return (
@@ -1268,10 +1542,10 @@ function App() {
                   onChange={e => setTopicDraft(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") save(topicDraft);
                                     if (e.key === "Escape") setTopicEditing(false); }}
-                  placeholder="Thema dieser Stunde"
-                  style={{ flex:1, padding:"9px 11px", background:C.surface,
+                  placeholder="Thema dieser Stunde" {...inputFocus}
+                  style={{ flex:1, padding:"12px 11px", background:C.surface,
                            border:`1px solid ${C.accent}`, borderRadius:8, color:C.text,
-                           fontSize:13, outline:"none" }} />
+                           fontSize:15, outline:"none" }} />
                 <button style={S.btnSm("primary")} onClick={() => save(topicDraft)}>✓</button>
               </div>
               {chips.length > 0 && (
@@ -1279,7 +1553,7 @@ function App() {
                   {chips.map(t => (
                     <button key={t} onClick={() => save(t)}
                       style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:20,
-                               padding:"5px 11px", fontSize:12, color:C.textDim, cursor:"pointer",
+                               padding:"5px 11px", fontSize:13, color:C.textDim, cursor:"pointer",
                                WebkitAppearance:"none" }}>{t}</button>
                   ))}
                 </div>
@@ -1288,45 +1562,130 @@ function App() {
           );
         })()}
 
-        {suggested.length > 0 && (
-          <>
-            <div style={S.sectionLbl}>Vorschlag — am längsten nicht beobachtet</div>
-            {suggested.map(st => {
-              const stats = getStats(activeCourse, st.id);
-              return (
-                <div key={st.id} style={{ ...S.courseCard(true), cursor:"pointer" }} onClick={() => setActiveStudent(st.id)}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <div style={{ fontSize:15, fontWeight:600 }}>{st.name}</div>
-                    <div style={{ fontSize:11, color:C.textDim }}>{stats.last || "noch nie"}</div>
-                  </div>
-                  {stats.total > 0 && (
-                    <div style={{ fontSize:12, color:C.textDim, marginTop:2 }}>
-                      <span style={{ color:C.green }}>+{stats.pos}</span> / <span style={{ color:C.red }}>−{stats.neg}</span> insgesamt
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </>
-        )}
+        {(() => {
+          // Schnellbewertung auf das Leitkriterium des Bogens: eine Beobachtung
+          // dauert zwei Sekunden, der Weg über die Detailseite kostete vier Taps.
+          // Die Detailseite bleibt für den differenzierten Fall.
+          const lead = criteria[0];
+          // 24 Namen sind über zwei Bildschirme verteilt; wer gerade spricht, steht
+          // mit gleicher Wahrscheinlichkeit ganz unten. Tippen schlägt Scrollen.
+          const q = nameFilter.trim().toLowerCase();
+          const hit = st => !q || st.name.toLowerCase().includes(q);
+          const openSt = available.filter(st => hit(st) && !getToday(activeCourse, st.id).done);
+          const doneSt = available.filter(st => hit(st) &&  getToday(activeCourse, st.id).done);
+          const sugg   = q ? [] : suggested.filter(st => !getToday(activeCourse, st.id).done);
 
-        <div style={S.sectionLbl}>Alle anwesenden ({available.length})</div>
-        {available.map(st => {
-          const stats = getStats(activeCourse, st.id);
-          return (
-            <div key={st.id} style={{ ...S.row, cursor:"pointer" }} onClick={() => setActiveStudent(st.id)}>
-              <span style={{ fontSize:14, fontWeight:500 }}>{st.name}</span>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                {stats.total > 0 && (
-                  <span style={{ fontSize:11, color:C.textDim }}>
-                    <span style={{ color:C.green }}>+{stats.pos}</span>/<span style={{ color:C.red }}>−{stats.neg}</span>
-                  </span>
+          // Klebt unter dem Kopfbereich, damit nach zwei Wischern noch klar ist,
+          // in welchem Abschnitt man liest.
+          const stickyLbl = { ...S.sectionLbl, position:"sticky",
+                              // Der Kopfbereich wächst mit der Notch — mitrechnen, nicht raten.
+                              top:"calc(52px + max(16px, env(safe-area-inset-top)))", zIndex:40,
+                              background:C.bg, paddingTop:10, paddingBottom:6, marginTop:12 };
+
+          const quickBtn = (color, filled) => ({
+            width:46, padding:"13px 0", borderRadius:8,
+            background: filled ? color : "transparent",
+            color: filled ? C.onFill : color,
+            border:`1px solid ${color}`, fontSize:17, fontWeight:700,
+            cursor:"pointer", WebkitAppearance:"none", flexShrink:0,
+          });
+
+          const row = (st, highlight) => {
+            const stats = getStats(activeCourse, st.id);
+            const t     = getToday(activeCourse, st.id);
+            const leadObs = lead && obsFor(activeCourse, st.id).find(o =>
+              o.criterionId === lead.id && o.date === today);
+            return (
+              <div key={st.id} style={{ ...S.row, gap:8,
+                background:   highlight ? C.accentSoft : C.card,
+                borderColor:  highlight ? C.accent : C.border }}>
+                <button onClick={() => setActiveStudent(st.id)}
+                  style={{ flex:1, minWidth:0, textAlign:"left", background:"none",
+                           border:"none", padding:"2px 0", minHeight:44, cursor:"pointer",
+                           WebkitAppearance:"none" }}>
+                  <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{st.name}</div>
+                  <div style={{ fontSize:13, color:C.textDim, marginTop:1 }}>
+                    {/* Zeichen + Wort, nie Farbe allein */}
+                    {t.rated > 0   ? `✓ heute ${t.rated}×`
+                     : t.skipped   ? "○ heute nichts zu bewerten"
+                     : stats.last  ? `zuletzt ${stats.last}`
+                     :               "noch nie beobachtet"}
+                    {stats.total > 0 && <>{" · "}
+                      <span style={{ color:C.green }}>+{stats.pos}</span>/
+                      <span style={{ color:C.red }}>−{stats.neg}</span></>}
+                  </div>
+                </button>
+                {lead && (
+                  <div style={{ display:"flex", gap:5, flexShrink:0 }}>
+                    <button title={`${lead.short} +`} onClick={() => addObs(st.id, lead.id, "+")}
+                      style={quickBtn(C.green, leadObs?.rating === "+")}>+</button>
+                    <button title={`${lead.short} −`} onClick={() => addObs(st.id, lead.id, "-")}
+                      style={quickBtn(C.red, leadObs?.rating === "-")}>−</button>
+                  </div>
                 )}
-                <Icon name="eye" size={16} color={C.textDim} />
               </div>
-            </div>
+            );
+          };
+
+          return (
+            <>
+              {lead && (
+                <div style={{ fontSize:13, color:C.textMuted, marginBottom:10 }}>
+                  Schnellknöpfe bewerten „{lead.short}“ · Name antippen für alle Kriterien
+                </div>
+              )}
+
+              <div style={{ display:"flex", gap:6, marginBottom:4 }}>
+                <input value={nameFilter} {...inputFocus}
+                  onChange={e => setNameFilter(e.target.value)}
+                  aria-label="Schüler suchen"
+                  placeholder="Name suchen…"
+                  style={{ flex:1, padding:"12px 12px", background:C.surface,
+                           border:`1px solid ${C.border}`, borderRadius:8, color:C.text,
+                           fontSize:15, outline:"none" }} />
+                {nameFilter && (
+                  <button aria-label="Suche zurücksetzen" onClick={() => setNameFilter("")}
+                    style={{ ...S.btnSm("ghost"), padding:"12px 14px" }}>
+                    <Icon name="x" size={14} color={C.textDim} />
+                  </button>
+                )}
+              </div>
+
+              {sugg.length > 0 && (
+                <>
+                  <div style={stickyLbl}>Vorschlag — am längsten nicht beobachtet</div>
+                  {sugg.map(st => row(st, true))}
+                </>
+              )}
+
+              {course.students.length === 0 && (
+                <div style={{ background:C.amberSoft, border:`1px solid ${C.amber}`, borderRadius:10,
+                              padding:"14px 16px", marginBottom:12 }}>
+                  <div style={{ fontSize:15, fontWeight:600, color:C.amber, marginBottom:4 }}>
+                    Noch keine Schülerliste
+                  </div>
+                  <div style={{ fontSize:13, color:C.textDim }}>
+                    Kurse → {activeCourse} → „Ganze Liste importieren“, Namen aus IServ einfügen.
+                  </div>
+                </div>
+              )}
+
+              <div style={stickyLbl}>Offen ({openSt.length})</div>
+              {openSt.length === 0 ? (
+                <div style={{ fontSize:15, color: q ? C.textDim : C.green, padding:"10px 0" }}>
+                  {q ? "Kein offener Name passt zur Suche." : "✓ Heute alle einmal erfasst."}
+                </div>
+              ) : openSt.filter(st => !sugg.includes(st)).map(st => row(st, false))}
+
+              {doneSt.length > 0 && (
+                <>
+                  <div style={stickyLbl}>Heute erledigt ({doneSt.length})</div>
+                  {doneSt.map(st => row(st, false))}
+                </>
+              )}
+            </>
           );
-        })}
+        })()}
 
         <button style={{ ...S.btn("ghost"), marginTop:20 }} onClick={goHome}>✓ Stunde beenden</button>
       </div>
@@ -1335,29 +1694,41 @@ function App() {
 
   // ── RENDER: STUDENTS tab ─────────────────────────────────────────────────
 
+  // Neun Kurse mit voller Liste sind 225 Zeilen am Stück. Einer offen reicht —
+  // man korrigiert Namen in einem Kurs, nicht in allen.
   const renderStudents = () => (
     <div style={S.page}>
       <h2 style={{ fontSize:20, fontWeight:700, margin:"0 0 16px" }}>Kurse & Schülerlisten</h2>
-      {courses.filter(c => c.criteriaType !== "none").map(course => (
-        <div key={course.name} style={{ marginBottom:24 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
-            <div>
-              <div style={{ fontSize:15, fontWeight:600 }}>{course.name}</div>
-              <div style={{ fontSize:12, color:C.textDim }}>
+      {courses.filter(c => c.criteriaType !== "none").map(course => {
+        const open = openCourse === course.name;
+        return (
+        <div key={course.name} style={{ marginBottom:10 }}>
+          <button
+            aria-expanded={open}
+            onClick={() => setOpenCourse(open ? null : course.name)}
+            style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                     width:"100%", gap:10, textAlign:"left", cursor:"pointer",
+                     background: open ? C.accentSoft : C.card,
+                     border:`1px solid ${open ? C.accent : C.border}`,
+                     borderRadius:10, padding:"14px 16px", WebkitAppearance:"none" }}>
+            <span>
+              <span style={{ display:"block", fontSize:15, fontWeight:600, color:C.text }}>{course.name}</span>
+              <span style={{ display:"block", fontSize:15, color:C.textDim, marginTop:2 }}>
                 {course.students.length} Schüler · {course.criteriaType==="fremdsprachen"?"FS-Bogen":"Allg. Bogen"}
-              </div>
-            </div>
-            <button style={{ ...S.btnSm("primary"), display:"flex", alignItems:"center", gap:4, flexShrink:0 }}
-              onClick={() => { setActiveCourse(course.name); setImportText(""); setShowImport(true); }}>
-              <Icon name="upload" size={13} color="#fff" /> Import
-            </button>
-          </div>
-          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"4px 10px" }}>
+              </span>
+            </span>
+            <span style={{ fontSize:15, color:C.textDim, flexShrink:0 }}>{open ? "▾" : "▸"}</span>
+          </button>
+
+          {open && (
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderTop:"none",
+                        borderRadius:"0 0 10px 10px", padding:"4px 12px" }}>
             {course.students.map(st => (
-              <div key={st.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, padding:"7px 0", borderBottom:`1px solid ${C.border}` }}>
+              <div key={st.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, borderBottom:`1px solid ${C.border}` }}>
                 {editingStudentKey === studentKey(course.name, st.id) ? (
                   <input
                     autoFocus
+                    aria-label="Name ändern" {...inputFocus}
                     value={editStudentValue}
                     onChange={e => setEditStudentValue(e.target.value)}
                     onKeyDown={e => {
@@ -1365,26 +1736,35 @@ function App() {
                       if (e.key === "Escape") setEditingStudentKey(null);
                     }}
                     onBlur={() => { renameStudent(course.name, st.id, editStudentValue); setEditingStudentKey(null); }}
-                    style={{ flex:1, fontSize:13, padding:"5px 7px", background:C.surface, border:`1px solid ${C.accent}`, borderRadius:6, color:C.text, outline:"none" }}
+                    style={{ flex:1, fontSize:15, padding:"10px 9px", margin:"3px 0", background:C.surface, border:`1px solid ${C.accent}`, borderRadius:6, color:C.text, outline:"none" }}
                   />
                 ) : (
-                  <span style={{ fontSize:13, color:C.textDim, flex:1, cursor:"pointer" }}
-                    onClick={() => { setEditingStudentKey(studentKey(course.name, st.id)); setEditStudentValue(st.name); }}>{st.name}</span>
+                  /* 15pt hoher Text war das Umbenennen-Ziel — jetzt volle Zeilenhöhe. */
+                  <button style={{ flex:1, minHeight:44, textAlign:"left", fontSize:15, color:C.text,
+                                   background:"none", border:"none", padding:0, cursor:"pointer",
+                                   WebkitAppearance:"none" }}
+                    onClick={() => { setEditingStudentKey(studentKey(course.name, st.id)); setEditStudentValue(st.name); }}>
+                    {st.name}
+                  </button>
                 )}
                 {confirmRemoveKey === studentKey(course.name, st.id) ? (
                   <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-                    <button style={{ ...S.btnSm("red"), padding:"5px 9px" }}
+                    <button aria-label={`${st.name} endgültig entfernen`}
+                      style={{ ...S.btnSm("red"), padding:"11px 13px" }}
                       onClick={() => { removeStudent(course.name, st.id); setConfirmRemoveKey(null); }}>
-                      <Icon name="check" size={12} color={C.red} />
+                      <Icon name="check" size={13} color={C.red} />
                     </button>
-                    <button style={{ ...S.btnSm("ghost"), padding:"5px 9px" }} onClick={() => setConfirmRemoveKey(null)}>
-                      <Icon name="x" size={12} color={C.textDim} />
+                    <button aria-label="Entfernen abbrechen"
+                      style={{ ...S.btnSm("ghost"), padding:"11px 13px" }} onClick={() => setConfirmRemoveKey(null)}>
+                      <Icon name="x" size={13} color={C.textDim} />
                     </button>
                   </div>
                 ) : (
-                  <button style={{ background:"none", border:"none", cursor:"pointer", padding:4, flexShrink:0, WebkitAppearance:"none" }}
+                  /* 22x26pt direkt neben dem Umbenennen-Ziel — jetzt 44pt und mit Abstand. */
+                  <button aria-label={`${st.name} entfernen`}
+                    style={{ background:"none", border:"none", cursor:"pointer", padding:15, flexShrink:0, WebkitAppearance:"none" }}
                     onClick={() => setConfirmRemoveKey(studentKey(course.name, st.id))}>
-                    <Icon name="trash" size={14} color={C.textMuted} />
+                    <Icon name="trash" size={14} color={C.textDim} />
                   </button>
                 )}
               </div>
@@ -1393,6 +1773,7 @@ function App() {
               <div style={{ display:"flex", gap:6, padding:"8px 0" }}>
                 <input
                   autoFocus
+                  aria-label="Name des neuen Schülers" {...inputFocus}
                   placeholder="Vorname Nachname"
                   value={addStudentValue}
                   onChange={e => setAddStudentValue(e.target.value)}
@@ -1400,24 +1781,30 @@ function App() {
                     if (e.key === "Enter") { addStudent(course.name, addStudentValue); setAddStudentValue(""); }
                     if (e.key === "Escape") { setAddingToCourse(null); setAddStudentValue(""); }
                   }}
-                  style={{ flex:1, fontSize:13, padding:"7px 9px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, color:C.text, outline:"none" }}
+                  style={{ flex:1, fontSize:15, padding:"11px 9px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:6, color:C.text, outline:"none" }}
                 />
-                <button style={S.btnSm("primary")} onClick={() => { addStudent(course.name, addStudentValue); setAddStudentValue(""); }}>
-                  <Icon name="check" size={13} color="#fff" />
+                <button aria-label="Schüler hinzufügen" style={S.btnSm("primary")} onClick={() => { addStudent(course.name, addStudentValue); setAddStudentValue(""); }}>
+                  <Icon name="check" size={13} color={C.onFill} />
                 </button>
-                <button style={S.btnSm("ghost")} onClick={() => { setAddingToCourse(null); setAddStudentValue(""); }}>
+                <button aria-label="Abbrechen" style={S.btnSm("ghost")} onClick={() => { setAddingToCourse(null); setAddStudentValue(""); }}>
                   <Icon name="x" size={13} color={C.textDim} />
                 </button>
               </div>
             ) : (
-              <button style={{ background:"none", border:"none", color:C.accent, fontSize:12, fontWeight:600, padding:"9px 0", cursor:"pointer", WebkitAppearance:"none" }}
+              <button style={{ background:"none", border:"none", color:C.accent, fontSize:15, fontWeight:600, padding:"13px 0", cursor:"pointer", WebkitAppearance:"none" }}
                 onClick={() => { setAddingToCourse(course.name); setAddStudentValue(""); }}>
                 + Schüler hinzufügen
               </button>
             )}
+            <button style={{ ...S.btnSm("ghost"), display:"flex", alignItems:"center", gap:6, width:"100%", justifyContent:"center", margin:"4px 0 12px" }}
+              onClick={() => { setActiveCourse(course.name); setImportText(""); setShowImport(true); }}>
+              <Icon name="upload" size={13} color={C.textDim} /> Ganze Liste importieren
+            </button>
           </div>
+          )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 
@@ -1438,73 +1825,92 @@ function App() {
           <h2 style={{ fontSize:20, fontWeight:700, margin:0 }}>Übersicht</h2>
           <button style={{ ...S.btnSm("primary"), display:"flex", alignItems:"center", gap:4 }}
             onClick={() => { setShowExport(true); setCopyOK(false); }}>
-            <Icon name="download" size={13} color="#fff" /> Export
+            <Icon name="download" size={13} color={C.onFill} /> Export
           </button>
         </div>
 
         <div style={{ display:"flex", gap:8, marginBottom:20 }}>
           <div style={S.statCard}>
-            <div style={{ fontSize:24, fontWeight:700 }}>{totalObs}</div>
-            <div style={{ fontSize:11, color:C.textDim, marginTop:2 }}>Beobachtungen</div>
+            <div style={{ fontSize:28, fontWeight:700 }}>{totalObs}</div>
+            <div style={{ fontSize:13, color:C.textDim, marginTop:2 }}>Beobachtungen</div>
           </div>
           <div style={S.statCard}>
-            <div style={{ fontSize:24, fontWeight:700 }}>{thisWeek}</div>
-            <div style={{ fontSize:11, color:C.textDim, marginTop:2 }}>Diese Woche</div>
+            <div style={{ fontSize:28, fontWeight:700 }}>{thisWeek}</div>
+            <div style={{ fontSize:13, color:C.textDim, marginTop:2 }}>Diese Woche</div>
           </div>
           <div style={S.statCard}>
-            <div style={{ fontSize:24, fontWeight:700 }}>{totalCourses}</div>
-            <div style={{ fontSize:11, color:C.textDim, marginTop:2 }}>Kurse</div>
+            <div style={{ fontSize:28, fontWeight:700 }}>{totalCourses}</div>
+            <div style={{ fontSize:13, color:C.textDim, marginTop:2 }}>Kurse</div>
           </div>
         </div>
 
-        <div style={S.sectionLbl}>Pro Kurs — Beobachtungsstand</div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
+          <div style={S.sectionLbl}>Pro Kurs — Beobachtungsstand</div>
+          <button onClick={() => setGradesVisible(v => !v)}
+            aria-label={gradesVisible ? "Notenvorschläge verdecken" : "Notenvorschläge aufdecken"}
+            style={{ display:"flex", alignItems:"center", gap:6, background:"none",
+                     border:`1px solid ${C.border}`, borderRadius:20, padding:"9px 13px",
+                     fontSize:13, color:C.textDim, cursor:"pointer", WebkitAppearance:"none", flexShrink:0 }}>
+            <Icon name="eye" size={14} color={C.textDim} />
+            {gradesVisible ? "Noten verdecken" : "Noten zeigen"}
+          </button>
+        </div>
+
         {courses.filter(c => c.criteriaType !== "none").map(course => {
-          const cObs    = observations.filter(o => o.course === course.name && isRating(o));
-          const stCount = new Set(cObs.map(o => o.studentId)).size;
+          const cObs    = obsForCourse(course.name).filter(isRating);
           const readyCount = course.students.filter(st => getObsProgress(course.name, st.id).ready).length;
           const totalSt = course.students.length;
           const pct = totalSt > 0 ? Math.round((readyCount / totalSt) * 100) : 0;
+          const open = openStats === course.name;
 
           return (
-            <div key={course.name} style={{ ...S.courseCard(false), cursor:"default", marginBottom:16 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                <div style={S.courseTitle}>{course.name}</div>
-                <div style={{ fontSize:13, fontWeight:700, color:C.accent }}>{cObs.length} Eintr.</div>
-              </div>
+            <div key={course.name} style={{ ...S.courseCard(false), cursor:"default", marginBottom:10, padding:0, overflow:"hidden" }}>
+              <button aria-expanded={open}
+                onClick={() => setOpenStats(open ? null : course.name)}
+                style={{ display:"block", width:"100%", textAlign:"left", background:"none",
+                         border:"none", padding:"14px 16px", cursor:"pointer", WebkitAppearance:"none" }}>
+                <span style={{ display:"flex", justifyContent:"space-between", marginBottom:8, gap:8 }}>
+                  <span style={{ ...S.courseTitle, color:C.text }}>{course.name}</span>
+                  <span style={{ fontSize:15, fontWeight:700, color:C.accent, flexShrink:0 }}>
+                    {cObs.length} Eintr. {open ? "▾" : "▸"}
+                  </span>
+                </span>
 
-              {/* Fortschrittsbalken */}
-              <div style={{ marginBottom:6 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                  <span style={{ fontSize:11, color:C.textDim }}>
+                <span style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                  <span style={{ fontSize:15, color:C.textDim }}>
                     {readyCount}/{totalSt} Schüler bereit für Notenvorschlag
                   </span>
-                  <span style={{ fontSize:11, color:C.textDim }}>{pct}%</span>
-                </div>
-                <div style={{ height:6, background:C.border, borderRadius:3, overflow:"hidden" }}>
-                  <div style={{ height:"100%", width:`${pct}%`, background:pct===100?C.green:C.accent, borderRadius:3, transition:"width 0.3s" }} />
-                </div>
-              </div>
+                  <span style={{ fontSize:15, color:C.textDim }}>{pct}%</span>
+                </span>
+                <span style={{ display:"block", height:6, background:C.border, borderRadius:3, overflow:"hidden" }}>
+                  <span style={{ display:"block", height:"100%", width:`${pct}%`, background:pct===100?C.green:C.accent, borderRadius:3, transition:"width 0.3s" }} />
+                </span>
+              </button>
 
-              {/* Schüler-Liste mit Status */}
-              <div style={{ marginTop:8 }}>
+              {open && (
+              <div style={{ padding:"0 16px 14px" }}>
                 {course.students.map(st => {
                   const prog   = getObsProgress(course.name, st.id);
                   const grade  = getGradeProposal(course.name, st.id);
                   return (
-                    <div key={st.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.border}` }}>
-                      <span style={{ fontSize:12, color:C.text, flex:1 }}>{st.name}</span>
-                      <span style={{ fontSize:11, color:C.textMuted, marginRight:8 }}>
+                    <div key={st.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 0", borderBottom:`1px solid ${C.border}` }}>
+                      <span style={{ fontSize:15, color:C.text, flex:1 }}>{st.name}</span>
+                      <span style={{ fontSize:13, color:C.textDim, marginRight:10 }}>
                         {prog.count} Eintr. / {prog.days} Tage
                       </span>
                       {grade ? (
-                        <span style={{ fontSize:11, fontWeight:700, color:grade.color, minWidth:32, textAlign:"right" }}>
-                          Note {grade.grade}
-                        </span>
+                        gradesVisible ? (
+                          <span style={{ fontSize:13, fontWeight:700, color:grade.color, minWidth:52, textAlign:"right" }}>
+                            Note {grade.grade}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize:13, fontWeight:700, color:C.textMuted, minWidth:52, textAlign:"right", letterSpacing:"0.1em" }}>
+                            ····
+                          </span>
+                        )
                       ) : (
-                        <span style={{ fontSize:10, color:C.textMuted, minWidth:32, textAlign:"right" }}>
+                        <span style={{ fontSize:13, color:C.textMuted, minWidth:52, textAlign:"right" }}>
                           {(() => {
-                            // Both conditions must show. Reporting only the missing
-                            // entries let "noch 1" appear when 2 more days were needed too.
                             const needEntries = MIN_ENTRIES - prog.count;
                             const needDays    = MIN_DAYS - prog.days;
                             if (needEntries > 0 && needDays > 0) return `noch ${needEntries} · ${needDays}T`;
@@ -1516,17 +1922,18 @@ function App() {
                     </div>
                   );
                 })}
+                <div style={{ fontSize:13, color:C.textMuted, marginTop:8 }}>
+                  Notenvorschlag ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} verschiedenen Tagen · Pädagogische Einschätzung der Lehrkraft entscheidet.
+                </div>
               </div>
-              <div style={{ fontSize:10, color:C.textMuted, marginTop:6 }}>
-                Notenvorschlag ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} verschiedenen Tagen · Pädagogische Einschätzung der Lehrkraft entscheidet.
-              </div>
+              )}
             </div>
           );
         })}
 
         <div style={S.sectionLbl}>Letzte 10 Einträge</div>
         {observations.length === 0 && (
-          <div style={{ textAlign:"center", padding:"32px 0", color:C.textDim, fontSize:13 }}>
+          <div style={{ textAlign:"center", padding:"32px 0", color:C.textDim, fontSize:15 }}>
             Noch keine Einträge — starte eine Stunde!
           </div>
         )}
@@ -1537,10 +1944,10 @@ function App() {
           return (
             <div key={obs.id} style={{ ...S.row, flexDirection:"column", alignItems:"flex-start", gap:3 }}>
               <div style={{ display:"flex", justifyContent:"space-between", width:"100%" }}>
-                <span style={{ fontSize:13, fontWeight:600 }}>{student?.name || "?"}</span>
-                <span style={{ fontSize:10, color:C.textDim }}>{obs.date} {obs.time}</span>
+                <span style={{ fontSize:15, fontWeight:600 }}>{student?.name || "?"}</span>
+                <span style={{ fontSize:13, color:C.textDim }}>{obs.date} {obs.time}</span>
               </div>
-              <div style={{ fontSize:12, color:C.textDim }}>
+              <div style={{ fontSize:13, color:C.textDim }}>
                 {obs.course} · {crit?.short
                   || (obs.criterionId === "note" ? "Notiz"
                     : obs.criterionId === "skip" ? "heute nichts beobachtet"
@@ -1615,7 +2022,7 @@ function App() {
     return (
       <div style={S.page} className="print-doc">
         <div className="no-print" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-          <button style={{ background:"none", border:"none", color:C.accent, fontSize:13, fontWeight:600, cursor:"pointer", padding:0, WebkitAppearance:"none" }}
+          <button style={{ background:"none", border:"none", color:C.accent, fontSize:15, fontWeight:600, cursor:"pointer", padding:0, WebkitAppearance:"none" }}
             onClick={() => setPage("settings")}>← Zurück</button>
           <button style={S.btnSm("primary")} onClick={() => window.print()}>Drucken / PDF</button>
         </div>
@@ -1623,7 +2030,7 @@ function App() {
         <h2 style={{ fontSize:20, fontWeight:700, margin:"8px 0 2px" }}>
           Klassenbuch{logbookCourse ? ` · ${logbookCourse}` : ""}
         </h2>
-        <div style={{ fontSize:12, color:C.textDim, marginBottom:14 }}>
+        <div style={{ fontSize:13, color:C.textDim, marginBottom:14 }}>
           {logbookAll ? "Alle erfassten Stunden" : "Letzte 7 Tage"} · Philipp Tran-Huynh · Gymnasium Grootmoor
         </div>
 
@@ -1633,7 +2040,7 @@ function App() {
               style={{ background: logbookCourse === c ? C.accentSoft : C.card,
                        border:`1px solid ${logbookCourse === c ? C.accent : C.border}`,
                        color: logbookCourse === c ? C.accent : C.textDim,
-                       borderRadius:20, padding:"5px 11px", fontSize:12,
+                       borderRadius:20, padding:"5px 11px", fontSize:13,
                        fontWeight: logbookCourse === c ? 600 : 400,
                        cursor:"pointer", WebkitAppearance:"none" }}>
               {c || "Alle Kurse"}
@@ -1647,31 +2054,31 @@ function App() {
         </button>
 
         {rows.length === 0 && (
-          <div style={{ textAlign:"center", padding:"40px 0", color:C.textDim, fontSize:13 }}>
+          <div style={{ textAlign:"center", padding:"40px 0", color:C.textDim, fontSize:15 }}>
             {logbookCourse ? `Für ${logbookCourse} ist hier noch nichts erfasst.` : "Noch keine Stunden erfasst."}
           </div>
         )}
 
         {groups.map(g => (
           <div key={g.course} className="logbook-group" style={{ marginBottom:22 }}>
-            <div style={{ fontSize:13, fontWeight:700, color:C.accent, paddingBottom:6,
+            <div style={{ fontSize:15, fontWeight:700, color:C.accent, paddingBottom:6,
                           borderBottom:`2px solid ${C.border}`, marginBottom:2 }}>
               {g.course}
-              <span style={{ fontWeight:400, color:C.textDim, fontSize:11 }}> · {g.rows.length} Stunden</span>
+              <span style={{ fontWeight:400, color:C.textDim, fontSize:13 }}> · {g.rows.length} Stunden</span>
             </div>
             {g.rows.map(r => (
               <div key={r.key} className="logbook-row"
                 style={{ padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
                 <div style={{ display:"flex", justifyContent:"space-between", gap:10, marginBottom:2 }}>
-                  <span style={{ fontSize:13, fontWeight:700 }}>{fmtLogDate(r.date)}</span>
-                  <span style={{ fontSize:11, color:C.textDim, flexShrink:0 }}>
+                  <span style={{ fontSize:15, fontWeight:700 }}>{fmtLogDate(r.date)}</span>
+                  <span style={{ fontSize:13, color:C.textDim, flexShrink:0 }}>
                     {r.obsCount > 0 ? `${r.obsCount} Beob.` : ""}
                   </span>
                 </div>
-                <div style={{ fontSize:13, marginBottom:3 }}>
+                <div style={{ fontSize:15, marginBottom:3 }}>
                   {r.topic || <span style={{ color:C.textMuted, fontStyle:"italic" }}>kein Thema eingetragen</span>}
                 </div>
-                <div style={{ fontSize:11, color:C.textDim }}>
+                <div style={{ fontSize:13, color:C.textDim }}>
                   {r.absentNames.length ? `Fehlend: ${r.absentNames.join(", ")}` : "Vollzählig"}
                   {r.hwText ? ` · ${r.hwText}` : ""}
                 </div>
@@ -1689,34 +2096,34 @@ function App() {
 
       {/* BACKUP — wichtigste Sektion ganz oben */}
       <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:12, padding:"14px 16px", marginBottom:8 }}>
-        <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:4 }}>DATENSICHERUNG</div>
-        <div style={{ fontSize:13, color:C.text, marginBottom:8, lineHeight:"1.6" }}>
+        <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:4 }}>DATENSICHERUNG</div>
+        <div style={{ fontSize:15, color:C.text, marginBottom:8, lineHeight:"1.6" }}>
           Einmal pro Woche sichern — schützt vor Datenverlust bei App-Updates oder Browser-Cache-Löschung.
         </div>
-        <div style={{ fontSize:11, color:C.textDim, marginBottom:12 }}>
+        <div style={{ fontSize:13, color:C.textDim, marginBottom:12 }}>
           Sicherungs-Erinnerung: {lastAutoBackup
             ? `zuletzt vor ${Math.floor((Date.now()-new Date(lastAutoBackup).getTime())/86400000)} Tag(en) — alle 4–7 Tage erscheint auf der Startseite ein Hinweis zum Antippen`
             : "erscheint auf der Startseite, sobald Beobachtungen erfasst sind"}
         </div>
         <button style={{ ...S.btn("primary"), marginTop:0 }} onClick={exportBackup}>
           <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-            <Icon name="download" size={16} color="#fff" /> Backup herunterladen (.json)
+            <Icon name="download" size={16} color={C.onFill} /> Backup herunterladen (.json)
           </span>
         </button>
         <div style={{ ...S.sectionLbl, marginTop:16 }}>Backup wiederherstellen</div>
-        <div style={{ fontSize:12, color:C.textDim, marginBottom:8 }}>
+        <div style={{ fontSize:13, color:C.textDim, marginBottom:8 }}>
           Backup-Datei auswählen — alle aktuellen Daten werden ersetzt.
         </div>
-        <label style={{ display:"block", background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, padding:"13px 20px", fontSize:14, fontWeight:600, color:C.text, cursor:"pointer", textAlign:"center", marginTop:0 }}>
+        <label style={{ display:"block", background:"transparent", border:`1px solid ${C.border}`, borderRadius:10, padding:"13px 20px", fontSize:15, fontWeight:600, color:C.text, cursor:"pointer", textAlign:"center", marginTop:0 }}>
           <Icon name="upload" size={16} color={C.textDim} /> Backup importieren
           <input type="file" accept=".json" style={{ display:"none" }}
             onChange={e => importBackup(e.target.files[0])} />
         </label>
         {backupImportOK && (
-          <div style={{ fontSize:12, color:C.green, marginTop:8, fontWeight:600 }}>✓ Backup erfolgreich wiederhergestellt!</div>
+          <div style={{ fontSize:13, color:C.green, marginTop:8, fontWeight:600 }}>✓ Backup erfolgreich wiederhergestellt!</div>
         )}
         {backupError && (
-          <div style={{ fontSize:12, color:C.red, marginTop:8 }}>{backupError}</div>
+          <div style={{ fontSize:13, color:C.red, marginTop:8 }}>{backupError}</div>
         )}
       </div>
 
@@ -1747,8 +2154,8 @@ function App() {
       </button>
 
       <div style={{ ...S.sectionLbl, marginTop:24 }}>Info</div>
-      <div style={{ fontSize:12, color:C.textDim, lineHeight:"1.9", background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
-        <strong style={{ color:C.text }}>ClassPulse — Participation Tracker v1.1</strong><br/>
+      <div style={{ fontSize:13, color:C.textDim, lineHeight:"1.9", background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
+        <strong style={{ color:C.text }}>ClassPulse — Participation Tracker v1.2</strong><br/>
         Daten lokal auf diesem Gerät (localStorage).<br/>
         Kein Server · kein Login · kein Tracking.<br/><br/>
         <strong style={{ color:C.text }}>Bewertungsbögen:</strong><br/>
@@ -1763,25 +2170,25 @@ function App() {
 
       <div style={{ ...S.sectionLbl, marginTop:24 }}>PDF-Export für Gespräche</div>
       <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
-        <div style={{ fontSize:12, color:C.text, fontWeight:600, marginBottom:6 }}>
+        <div style={{ fontSize:13, color:C.text, fontWeight:600, marginBottom:6 }}>
           Schöne Schüler-PDFs zum Halbjahr:
         </div>
-        <div style={{ fontSize:12, color:C.textDim, lineHeight:"2" }}>
-          1. Hier: „Backup herunterladen" → .json Datei<br/>
+        <div style={{ fontSize:13, color:C.textDim, lineHeight:"2" }}>
+          1. Hier: „Backup herunterladen“ → .json Datei<br/>
           2. GitHub Repo: CLASSPULSE_PDF_RULES.md herunterladen<br/>
           3. Claude Momentum-Chat öffnen<br/>
           4. Beide Dateien hochladen<br/>
-          5. Schreiben: „Erstell mir die ClassPulse PDF-Exports"<br/>
+          5. Schreiben: „Erstell mir die ClassPulse PDF-Exports“<br/>
           6. PDF herunterladen — fertig
         </div>
-        <div style={{ fontSize:11, color:C.textMuted, marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+        <div style={{ fontSize:13, color:C.textMuted, marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
           GitHub: glowgiver/classpulse · classpulse_export.py + CLASSPULSE_PDF_RULES.md
         </div>
       </div>
 
-      <div style={{ ...S.sectionLbl, marginTop:24 }}>PWA-Installation (iPad)</div>
-      <div style={{ fontSize:12, color:C.textDim, lineHeight:"1.9", background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
-        Safari öffnen → Teilen-Symbol (□↑) → „Zum Home-Bildschirm" → Hinzufügen.<br/>
+      <div style={{ ...S.sectionLbl, marginTop:24 }}>PWA-Installation (iPhone)</div>
+      <div style={{ fontSize:13, color:C.textDim, lineHeight:"1.9", background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
+        Safari öffnen → Teilen-Symbol (□↑) → „Zum Home-Bildschirm“ → Hinzufügen.<br/>
         App läuft dann vollbildig und offline.
       </div>
     </div>
@@ -1792,13 +2199,13 @@ function App() {
   const renderImportModal = () => (
     <div style={S.modal} onClick={() => setShowImport(false)}>
       <div style={S.modalInner} onClick={e => e.stopPropagation()}>
-        <h3 style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>Schülerliste importieren</h3>
-        <p style={{ fontSize:13, color:C.textDim, marginBottom:12 }}>
+        <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>Schülerliste importieren</h3>
+        <p style={{ fontSize:15, color:C.textDim, marginBottom:12 }}>
           {activeCourse} — ein Name pro Zeile (aus IServ kopieren)
         </p>
-        <textarea style={S.textarea} value={importText} onChange={e => setImportText(e.target.value)}
+        <textarea style={S.textarea} {...inputFocus} value={importText} onChange={e => setImportText(e.target.value)}
           placeholder={"Max Mustermann\nErika Musterfrau\nAli Yilmaz\n…"} autoFocus />
-        <div style={{ fontSize:12, color:C.textDim, marginTop:6, marginBottom:12 }}>
+        <div style={{ fontSize:13, color:C.textDim, marginTop:6, marginBottom:12 }}>
           {importText.split("\n").filter(l=>l.trim()).length} Namen erkannt
         </div>
         <div style={{ display:"flex", gap:8 }}>
@@ -1810,6 +2217,40 @@ function App() {
       </div>
     </div>
   );
+
+  // ── RENDER: ANWESENHEITS-SHEET ───────────────────────────────────────────
+
+  const renderAttendanceModal = () => {
+    const course = courses.find(c => c.name === activeCourse);
+    if (!course) return null;
+    const absentIds = absences[`${today}_${activeCourse}`] || [];
+    return (
+      <div style={S.modal} onClick={() => setShowAttendance(false)}>
+        <div style={S.modalInner} onClick={e => e.stopPropagation()}>
+          <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>Anwesenheit</h3>
+          <p style={{ fontSize:15, color:C.textDim, marginBottom:14 }}>
+            {activeCourse} · Antippen = fehlt, nochmal = wieder da
+          </p>
+          {course.students.map(st => {
+            const absent = absentIds.includes(st.id);
+            return (
+              <button key={st.id} onClick={() => toggleAbsentToday(st.id)}
+                style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer",
+                         WebkitAppearance:"none",
+                         background: absent ? C.redSoft : C.card,
+                         borderColor: absent ? C.red : C.border }}>
+                <span style={{ fontSize:15, fontWeight:500, color: absent ? C.red : C.text }}>{st.name}</span>
+                <span style={{ fontSize:13, fontWeight:700, color: absent ? C.red : C.textDim }}>
+                  {absent ? "fehlt" : "da"}
+                </span>
+              </button>
+            );
+          })}
+          <button style={S.btn("primary")} onClick={() => setShowAttendance(false)}>Fertig</button>
+        </div>
+      </div>
+    );
+  };
 
   // ── SESSION ROUTER ───────────────────────────────────────────────────────
 
@@ -1837,8 +2278,8 @@ function App() {
           </div>
         </div>
         {activeCourse && sessionPhase !== "select" && (
-          <button style={{ background:"none", border:"none", color:C.textDim, cursor:"pointer", padding:"4px 8px", fontSize:13 }}
-            onClick={goHome}>✕</button>
+          <button style={{ background:"none", border:"none", color:C.textDim, cursor:"pointer", padding:"4px 8px", fontSize:15 }}
+            aria-label="Stunde beenden" onClick={goHome}>✕</button>
         )}
       </div>
 
@@ -1852,67 +2293,38 @@ function App() {
       {/* Import modal */}
       {showImport && renderImportModal()}
 
+      {/* Anwesenheit nachtragen */}
+      {showAttendance && activeCourse && renderAttendanceModal()}
+
       {/* Export modal */}
       {showExport && (
         <div style={S.modal} onClick={() => setShowExport(false)}>
           <div style={S.modalInner} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>Export</h3>
-            <p style={{ fontSize:13, color:C.textDim, marginBottom:20 }}>
+            <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>Export</h3>
+            <p style={{ fontSize:15, color:C.textDim, marginBottom:20 }}>
               Datei direkt herunterladen — Excel öffnet sie sauber mit allen Spalten.
             </p>
 
             {/* Pro-Kurs Download */}
             <div style={S.sectionLbl}>Pro Kurs</div>
             {courses.filter(c => c.criteriaType !== "none").map(course => {
-              const courseObs = observations.filter(o => o.course === course.name);
+              const courseObs = obsForCourse(course.name);
               return (
-                <div key={course.name} style={{ ...S.row, cursor:"pointer" }} onClick={() => {
-                  const criteria = getCriteria(course.name);
-                  const lines = [];
-                  // BOM für Excel-Kompatibilität
-                  lines.push(`Name,${criteria.map(c => c.short).join(";")};HA-Quote;Fehltage;Gesamt`);
-                  course.students.forEach(st => {
-                    const obs = observations.filter(o => o.course === course.name && o.studentId === st.id);
-                    const critSummary = criteria.map(crit => {
-                      const pos = obs.filter(o => o.criterionId === crit.id && o.rating === "+").length;
-                      const neg = obs.filter(o => o.criterionId === crit.id && o.rating === "-").length;
-                      return (pos === 0 && neg === 0) ? "-" : `+${pos}/-${neg}`;
-                    });
-                    let hwTotal = 0, hwDone = 0;
-                    Object.entries(homework).forEach(([key, val]) => {
-                      if (key.endsWith(`_${course.name}`)) {
-                        const status = val[st.id];
-                        if (status === undefined) return;  // absent, or not yet in the course
-                        hwTotal++;
-                        if (status === "done") hwDone++;
-                        else if (status === "half") hwDone += 0.5;
-                      }
-                    });
-                    const hwPct = hwTotal > 0 ? `${Math.round((hwDone/hwTotal)*100)}%` : "-";
-                    let absentCount = 0;
-                    Object.entries(absences).forEach(([key, ids]) => {
-                      if (key.endsWith(`_${course.name}`) && ids.includes(st.id)) absentCount++;
-                    });
-                    lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${absentCount};${obs.length}`);
-                  });
-                  const csv = "\uFEFF" + lines.join("\r\n");
-                  const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
-                  const url  = URL.createObjectURL(blob);
-                  const a    = document.createElement("a");
-                  const date = new Date().toISOString().slice(0,10);
-                  a.href     = url;
-                  a.download = `ClassPulse_${course.name.replace(/[\s.]/g,"_")}_${date}.csv`;
-                  document.body.appendChild(a); a.click();
-                  document.body.removeChild(a); URL.revokeObjectURL(url);
-                }}>
-                  <div>
-                    <div style={{ fontSize:14, fontWeight:600 }}>{course.name}</div>
-                    <div style={{ fontSize:12, color:C.textDim }}>{courseObs.length} Einträge · {course.students.length} Schüler</div>
-                  </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:6, color:C.accent, fontSize:13, fontWeight:600 }}>
+                <button key={course.name} style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer", WebkitAppearance:"none" }}
+                  onClick={() => downloadCsv(
+                    courseCsvBlock(course),
+                    `ClassPulse_${course.name.replace(/[\s.]/g,"_")}_${new Date().toISOString().slice(0,10)}.csv`
+                  )}>
+                  <span>
+                    <span style={{ display:"block", fontSize:15, fontWeight:600 }}>{course.name}</span>
+                    <span style={{ display:"block", fontSize:15, color:C.textDim }}>
+                      {courseObs.length} Einträge · {course.students.length} Schüler
+                    </span>
+                  </span>
+                  <span style={{ display:"flex", alignItems:"center", gap:6, color:C.accent, fontSize:15, fontWeight:600 }}>
                     <Icon name="download" size={15} color={C.accent} /> .csv
-                  </div>
-                </div>
+                  </span>
+                </button>
               );
             })}
 
@@ -1921,46 +2333,13 @@ function App() {
             <button style={S.btn("primary")} onClick={() => {
               const lines = ["ClassPulse Export \u2014 " + new Date().toLocaleDateString("de-DE")];
               courses.filter(c => c.criteriaType !== "none").forEach(course => {
-                const criteria = getCriteria(course.name);
                 lines.push(`\r\n=== ${course.name} ===`);
-                lines.push(`Name;${criteria.map(c => c.short).join(";")};HA-Quote;Fehltage;Gesamt`);
-                course.students.forEach(st => {
-                  const obs = observations.filter(o => o.course === course.name && o.studentId === st.id);
-                  const critSummary = criteria.map(crit => {
-                    const pos = obs.filter(o => o.criterionId === crit.id && o.rating === "+").length;
-                    const neg = obs.filter(o => o.criterionId === crit.id && o.rating === "-").length;
-                    return (pos === 0 && neg === 0) ? "-" : `+${pos}/-${neg}`;
-                  });
-                  let hwTotal = 0, hwDone = 0;
-                  Object.entries(homework).forEach(([key, val]) => {
-                    if (key.endsWith(`_${course.name}`)) {
-                      const status = val[st.id];
-                      if (status === undefined) return;  // absent, or not yet in the course
-                      hwTotal++;
-                      if (status === "done") hwDone++;
-                      else if (status === "half") hwDone += 0.5;
-                    }
-                  });
-                  const hwPct = hwTotal > 0 ? `${Math.round((hwDone/hwTotal)*100)}%` : "-";
-                  let absentCount = 0;
-                  Object.entries(absences).forEach(([key, ids]) => {
-                    if (key.endsWith(`_${course.name}`) && ids.includes(st.id)) absentCount++;
-                  });
-                  lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${absentCount};${obs.length}`);
-                });
+                lines.push(...courseCsvBlock(course));
               });
-              const csv  = "\uFEFF" + lines.join("\r\n");
-              const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
-              const url  = URL.createObjectURL(blob);
-              const a    = document.createElement("a");
-              const date = new Date().toISOString().slice(0,10);
-              a.href     = url;
-              a.download = `ClassPulse_Alle_Kurse_${date}.csv`;
-              document.body.appendChild(a); a.click();
-              document.body.removeChild(a); URL.revokeObjectURL(url);
+              downloadCsv(lines, `ClassPulse_Alle_Kurse_${new Date().toISOString().slice(0,10)}.csv`);
             }}>
               <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                <Icon name="download" size={16} color="#fff" /> Alle Kurse herunterladen
+                <Icon name="download" size={16} color={C.onFill} /> Alle Kurse herunterladen
               </span>
             </button>
 
@@ -1973,23 +2352,23 @@ function App() {
       {infoCrit && (
         <div style={S.modal} onClick={() => setInfoCrit(null)}>
           <div style={S.modalInner} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:6 }}>
+            <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:6 }}>
               {infoCrit.area}
             </div>
-            <h3 style={{ fontSize:18, fontWeight:700, marginBottom:8 }}>{infoCrit.short}</h3>
-            <p style={{ fontSize:13, color:C.textDim, lineHeight:"1.6", marginBottom:16 }}>
+            <h3 style={{ fontSize:20, fontWeight:700, marginBottom:8 }}>{infoCrit.short}</h3>
+            <p style={{ fontSize:15, color:C.textDim, lineHeight:"1.6", marginBottom:16 }}>
               {infoCrit.full}
             </p>
             {infoCrit.examples && (
               <>
-                <div style={{ fontSize:11, fontWeight:700, color:C.textDim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:C.textDim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>
                   Beispiele im Unterricht
                 </div>
                 {infoCrit.examples.map((ex, i) => (
                   <div key={i} style={{
                     display:"flex", alignItems:"flex-start", gap:8,
                     padding:"8px 12px", background:C.surface, borderRadius:8,
-                    marginBottom:6, fontSize:13, color:C.text, lineHeight:"1.4",
+                    marginBottom:6, fontSize:15, color:C.text, lineHeight:"1.4",
                   }}>
                     <span style={{ color:C.accent, fontWeight:700, flexShrink:0 }}>→</span>
                     <span>{ex}</span>
@@ -2004,8 +2383,8 @@ function App() {
         </div>
       )}
 
-      {/* Undo toast — kompakt, eine Zeile, über Nav */}
-      {lastAction && (
+      {/* Undo toast — kompakt, eine Zeile, über Nav und über jedem Sheet */}
+      {lastAction && !typing && (
         <div style={{
           position:"fixed",
           bottom:`calc(66px + env(safe-area-inset-bottom))`,
@@ -2018,12 +2397,12 @@ function App() {
           alignItems:"center",
           justifyContent:"space-between",
           gap:8,
-          zIndex:150,
+          zIndex:250,
           boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
         }}>
           <div style={{ flex:1, minWidth:0, display:"flex", alignItems:"center", gap:8 }}>
-            <span style={{ fontSize:11, color:C.accent, fontWeight:700, flexShrink:0 }}>✓</span>
-            <span style={{ fontSize:12, fontWeight:500, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            <span style={{ fontSize:13, color:C.accent, fontWeight:700, flexShrink:0 }}>✓</span>
+            <span style={{ fontSize:13, fontWeight:500, color:C.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
               {lastAction.description}
             </span>
           </div>
@@ -2031,7 +2410,7 @@ function App() {
             onClick={performUndo}
             style={{
               background:"transparent", color:C.accent, border:`1px solid ${C.accent}`,
-              borderRadius:7, padding:"5px 12px", fontSize:12, fontWeight:700,
+              borderRadius:7, padding:"5px 12px", fontSize:13, fontWeight:700,
               cursor:"pointer", WebkitAppearance:"none", flexShrink:0,
             }}>
             ↶ Undo
@@ -2039,12 +2418,12 @@ function App() {
         </div>
       )}
 
-      {/* Bottom nav */}
-      <div style={S.nav} className="no-print">
+      {/* Bottom nav — verschwindet, solange die Tastatur offen ist */}
+      <div style={{ ...S.nav, display: typing ? "none" : "flex" }} className="no-print">
         {[
           { id:"home",     icon:"home",     label:"Stunde" },
           { id:"students", icon:"users",    label:"Kurse"  },
-          { id:"overview", icon:"chart",    label:"Stats"  },
+          { id:"overview", icon:"chart",    label:"Stand"  },
           { id:"settings", icon:"settings", label:"Mehr"   },
         ].map(tab => (
           <button key={tab.id} style={S.navBtn(page===tab.id)}
@@ -2059,7 +2438,25 @@ function App() {
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(React.createElement(App));
+const renderApp = () => root.render(React.createElement(App, { theme: prefersLight() ? "light" : "dark" }));
+renderApp();
+
+// Wer mitten in der Stunde vom Fenster wegtritt, soll nicht neu laden müssen.
+// Drei Auslöser, weil iOS das change-Event einer PWA im Hintergrund verschluckt:
+// die Medienabfrage selbst, die Rückkehr in die App, und der Fensterfokus.
+let themeIs = prefersLight() ? "light" : "dark";
+const syncTheme = () => {
+  const now = prefersLight() ? "light" : "dark";
+  if (now === themeIs) return;
+  themeIs = now;
+  applyTheme();
+  renderApp();
+};
+try {
+  window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", syncTheme);
+} catch(e) {}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) syncTheme(); });
+window.addEventListener("focus", syncTheme);
 </script>
 
 <script>
