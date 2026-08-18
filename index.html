@@ -315,6 +315,8 @@ function App() {
   const [confirmRemoveKey,  setConfirmRemoveKey]  = useState(null);
   const studentKey = (courseName, studentId) => `${courseName}::${studentId}`;
 
+  const [lastAutoBackup, setLastAutoBackup] = useState(() => localStorage.getItem("obs_lastAutoBackup"));
+
   // Undo: { type, description, undo: () => void, expires: timestamp }
   const [lastAction, setLastAction] = useState(null);
 
@@ -341,6 +343,25 @@ function App() {
   useEffect(() => saveData("obs_observations", observations), [observations]);
   useEffect(() => saveData("obs_homework",     homework),     [homework]);
   useEffect(() => saveData("obs_absences",     absences),     [absences]);
+
+  // Automatische Sicherung: löst beim Öffnen der App aus, wenn seit dem letzten
+  // Auto-Backup ein zufälliges Intervall (4–7 Tage) verstrichen ist. Eigene
+  // Dateinamen-Vorsilbe ("AutoBackup" statt "Backup"), damit System- und
+  // Handsicherungen im Downloads-/iCloud-Ordner unterscheidbar bleiben.
+  useEffect(() => {
+    if (!observations.length) return;
+    const last     = localStorage.getItem("obs_lastAutoBackup");
+    const dueDays  = Number(localStorage.getItem("obs_nextAutoBackupDays")) || 4;
+    const daysSince = last ? (Date.now() - new Date(last).getTime()) / 86400000 : Infinity;
+    if (daysSince >= dueDays) {
+      downloadBackup("ClassPulse_AutoBackup");
+      const nextDays = 4 + Math.floor(Math.random() * 4); // 4–7 Tage, bewusst unregelmäßig
+      const now = new Date().toISOString();
+      localStorage.setItem("obs_lastAutoBackup", now);
+      localStorage.setItem("obs_nextAutoBackupDays", String(nextDays));
+      setLastAutoBackup(now);
+    }
+  }, []);
 
   const today       = dateKey();
   const currentSlot = getCurrentSlot();
@@ -464,7 +485,7 @@ function App() {
   const goHome = () => { setActiveCourse(null); setSessionPhase("select"); setActiveStudent(null); setLastAction(null); };
 
   // ── JSON BACKUP ──────────────────────────────────────────────────────────
-  const exportBackup = () => {
+  const downloadBackup = (filenamePrefix) => {
     const backup = {
       version: "1.0",
       exportDate: new Date().toISOString(),
@@ -476,10 +497,12 @@ function App() {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     const date = new Date().toISOString().slice(0,10);
-    a.href = url; a.download = `ClassPulse_Backup_${date}.json`;
+    a.href = url; a.download = `${filenamePrefix}_${date}.json`;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
   };
+
+  const exportBackup = () => downloadBackup("ClassPulse_Backup");
 
   const importBackup = (file) => {
     if (!file) return;
@@ -1181,8 +1204,13 @@ function App() {
       {/* BACKUP — wichtigste Sektion ganz oben */}
       <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:12, padding:"14px 16px", marginBottom:8 }}>
         <div style={{ fontSize:11, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:4 }}>DATENSICHERUNG</div>
-        <div style={{ fontSize:13, color:C.text, marginBottom:12, lineHeight:"1.6" }}>
+        <div style={{ fontSize:13, color:C.text, marginBottom:8, lineHeight:"1.6" }}>
           Einmal pro Woche sichern — schützt vor Datenverlust bei App-Updates oder Browser-Cache-Löschung.
+        </div>
+        <div style={{ fontSize:11, color:C.textDim, marginBottom:12 }}>
+          Automatische Sicherung: {lastAutoBackup
+            ? `zuletzt ${Math.floor((Date.now()-new Date(lastAutoBackup).getTime())/86400000)} Tag(e) her — lädt "ClassPulse_AutoBackup_…" beim Öffnen der App herunter, sobald wieder fällig`
+            : "noch keine — läuft automatisch, sobald Beobachtungen erfasst wurden"}
         </div>
         <button style={{ ...S.btn("primary"), marginTop:0 }} onClick={exportBackup}>
           <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
