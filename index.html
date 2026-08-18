@@ -165,6 +165,12 @@ const COURSES_META = [
 
 const dateKey = (d = new Date()) => d.toISOString().slice(0,10);
 
+// Notes and "nothing to observe today" markers ride in the same list as ratings
+// but must never be counted as one. They still carry a date, so they do keep a
+// student out of the suggestion queue — which is the point of the skip marker.
+const NON_RATING = new Set(["note", "skip"]);
+const isRating = (o) => !NON_RATING.has(o.criterionId);
+
 const loadData = (key, fallback) => {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
   catch { return fallback; }
@@ -397,23 +403,27 @@ function App() {
     if (!course) return [];
     const absent  = absences[`${today}_${courseName}`] || [];
     const avail   = course.students.filter(st => !absent.includes(st.id));
-    const lastObs = {};
+    const lastObs = {}, ratings = {};
     observations.filter(o => o.course === courseName).forEach(o => {
       if (!lastObs[o.studentId] || o.date > lastObs[o.studentId]) lastObs[o.studentId] = o.date;
+      if (isRating(o)) ratings[o.studentId] = (ratings[o.studentId] || 0) + 1;
     });
     // Longest-unobserved first; never observed ("") sorts to the very front.
     // Equal dates must return 0 — returning -1 there reverses the whole list,
     // which silently favoured students at the end of the roster.
     return avail.sort((a,b) => {
       const la = lastObs[a.id] || "", lb = lastObs[b.id] || "";
-      return la < lb ? -1 : la > lb ? 1 : 0;
+      if (la !== lb) return la < lb ? -1 : 1;
+      // Same recency: thinnest record first, so one early "-" cannot park a
+      // quiet student at the back of the queue for weeks.
+      return (ratings[a.id] || 0) - (ratings[b.id] || 0);
     }).slice(0,count);
   }, [courses, observations, absences, today]);
 
   const getStats = useCallback((courseName, studentId) => {
     // Notes are stored with rating "+" — they must never count as a positive.
     const obs  = observations.filter(o =>
-      o.course === courseName && o.studentId === studentId && o.criterionId !== "note");
+      o.course === courseName && o.studentId === studentId && isRating(o));
     const pos  = obs.filter(o => o.rating === "+").length;
     const neg  = obs.filter(o => o.rating === "-").length;
     const last = obs.reduce((m,o) => o.date > m ? o.date : m, "");
@@ -506,6 +516,33 @@ function App() {
     setObservations(prev => [...prev, obs]);
     registerUndo(
       `${stName}: ${critLbl} ${ratingSym}`,
+      () => setObservations(prev => prev.filter(o => o.id !== obs.id))
+    );
+  };
+
+  // "Looked at them, nothing to rate today." Without this the only thing a quiet
+  // student can earn is a "-", because saying nothing has no other button.
+  // The marker carries a date, so they rotate out of today's suggestions, but it
+  // is not a rating and never reaches the grade proposal.
+  const skipToday = (studentId) => {
+    const already = observations.find(o =>
+      o.course === activeCourse && o.studentId === studentId &&
+      o.criterionId === "skip" && o.date === today
+    );
+    setActiveStudent(null);
+    if (already) return;
+    const course  = courses.find(c => c.name === activeCourse);
+    const student = course?.students.find(st => st.id === studentId);
+    const stName  = student?.name.split(" ")[0] || "?";
+    const obs = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+      course: activeCourse, studentId, criterionId: "skip",
+      rating: "", note: "", date: today,
+      time: new Date().toLocaleTimeString("de-DE", { hour:"2-digit", minute:"2-digit" }),
+    };
+    setObservations(prev => [...prev, obs]);
+    registerUndo(
+      `${stName}: heute nichts beobachtet`,
       () => setObservations(prev => prev.filter(o => o.id !== obs.id))
     );
   };
@@ -627,7 +664,7 @@ function App() {
 
   const getGradeProposal = (courseName, studentId) => {
     const obs = observations.filter(o =>
-      o.course === courseName && o.studentId === studentId && o.criterionId !== "note"
+      o.course === courseName && o.studentId === studentId && isRating(o)
     );
     const days = new Set(obs.map(o => o.date)).size;
     if (obs.length < MIN_ENTRIES || days < MIN_DAYS) return null;
@@ -643,7 +680,7 @@ function App() {
 
   const getObsProgress = (courseName, studentId) => {
     const obs = observations.filter(o =>
-      o.course === courseName && o.studentId === studentId && o.criterionId !== "note"
+      o.course === courseName && o.studentId === studentId && isRating(o)
     );
     const days = new Set(obs.map(o => o.date)).size;
     return { count: obs.length, days, ready: obs.length >= MIN_ENTRIES && days >= MIN_DAYS };
@@ -834,7 +871,7 @@ function App() {
       const student  = course.students.find(st => st.id === activeStudent);
       const todayObs = observations.filter(o => o.course === activeCourse && o.studentId === activeStudent && o.date === today);
       const areas    = [...new Set(criteria.map(c => c.area))];
-      const doneCount = todayObs.filter(o => o.criterionId !== "note").length;
+      const doneCount = todayObs.filter(isRating).length;
 
       return (
         <div style={S.page}>
@@ -1026,8 +1063,13 @@ function App() {
             }}>+</button>
           </div>
 
+          <button style={{ ...S.btn("ghost"), marginTop:16, color:C.textDim }}
+            onClick={() => skipToday(activeStudent)}>
+            Heute nichts zu bewerten
+          </button>
+
           {/* Zurück-Button unten für schnellen Wechsel */}
-          <button style={{ ...S.btn("ghost"), marginTop:16 }} onClick={() => setActiveStudent(null)}>
+          <button style={{ ...S.btn("ghost"), marginTop:8 }} onClick={() => setActiveStudent(null)}>
             ← Nächste/r Schüler/in
           </button>
         </div>
@@ -1176,8 +1218,9 @@ function App() {
   // ── RENDER: OVERVIEW tab ─────────────────────────────────────────────────
 
   const renderOverview = () => {
-    const totalObs  = observations.filter(o => o.criterionId !== "note").length;
+    const totalObs  = observations.filter(isRating).length;
     const thisWeek  = observations.filter(o => {
+      if (!isRating(o)) return false;
       const diff = (new Date() - new Date(o.date)) / (1000*60*60*24);
       return diff <= 7;
     }).length;
@@ -1210,7 +1253,7 @@ function App() {
 
         <div style={S.sectionLbl}>Pro Kurs — Beobachtungsstand</div>
         {courses.filter(c => c.criteriaType !== "none").map(course => {
-          const cObs    = observations.filter(o => o.course === course.name && o.criterionId !== "note");
+          const cObs    = observations.filter(o => o.course === course.name && isRating(o));
           const stCount = new Set(cObs.map(o => o.studentId)).size;
           const readyCount = course.students.filter(st => getObsProgress(course.name, st.id).ready).length;
           const totalSt = course.students.length;
@@ -1292,10 +1335,18 @@ function App() {
                 <span style={{ fontSize:10, color:C.textDim }}>{obs.date} {obs.time}</span>
               </div>
               <div style={{ fontSize:12, color:C.textDim }}>
-                {obs.course} · {crit?.short || (obs.criterionId==="note"?"Notiz":obs.criterionId)} ·{" "}
-                <span style={{ color:obs.rating==="+"?C.green:C.red, fontWeight:600 }}>
-                  {obs.rating==="+"?"gut":"schwach"}
-                </span>
+                {obs.course} · {crit?.short
+                  || (obs.criterionId === "note" ? "Notiz"
+                    : obs.criterionId === "skip" ? "heute nichts beobachtet"
+                    : obs.criterionId)}
+                {/* Only real ratings carry gut/schwach — a note is stored with "+"
+                    and would otherwise read as praise. */}
+                {isRating(obs) && <>
+                  {" · "}
+                  <span style={{ color:obs.rating==="+"?C.green:C.red, fontWeight:600 }}>
+                    {obs.rating==="+"?"gut":"schwach"}
+                  </span>
+                </>}
                 {obs.note && <span style={{ color:C.textMuted }}> — {obs.note}</span>}
               </div>
             </div>
