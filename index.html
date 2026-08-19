@@ -791,6 +791,52 @@ function App() {
     ));
   };
 
+  // F13: Was „zurück" bedeutet, hängt davon ab, wo man steht. Das Stundenende
+  // steht bewusst nicht in dieser Liste — es bleibt eine bewusste Entscheidung
+  // und darf nie aus einer Handbewegung heraus passieren.
+  const goBack = useCallback(() => {
+    if (infoCrit)           { setInfoCrit(null);        return true; }
+    if (showExport)         { setShowExport(false);     return true; }
+    if (showImport)         { setShowImport(false);     return true; }
+    if (showAttendance)     { setShowAttendance(false); return true; }
+    if (activeStudent)      { setActiveStudent(null);   return true; }
+    if (page === "logbook") { setPage("settings");      return true; }
+    return false;
+  }, [infoCrit, showExport, showImport, showAttendance, activeStudent, page]);
+
+  // Wischen nach rechts als Zurück. Bewusst nicht am Bildschirmrand: in der
+  // installierten PWA wäre der Rand frei, im Safari-Tab läge dort die
+  // Verlaufsgeste des Systems. Eine Geste, die nur in einem der beiden Fälle
+  // funktioniert, ist schlimmer als keine.
+  useEffect(() => {
+    let sx = 0, sy = 0, t0 = 0, gueltig = false;
+    const start = (e) => {
+      if (e.touches.length !== 1) { gueltig = false; return; }
+      const ziel = e.target;
+      // Nicht aus einem Eingabefeld heraus — dort wischt man Text, nicht Seiten.
+      if (ziel?.closest?.("input, textarea")) { gueltig = false; return; }
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+      t0 = Date.now(); gueltig = true;
+    };
+    const ende = (e) => {
+      if (!gueltig) return;
+      gueltig = false;
+      const t = e.changedTouches?.[0];
+      if (!t) return;
+      const dx = t.clientX - sx, dy = Math.abs(t.clientY - sy);
+      // Waagerecht, weit genug, zügig — sonst war es Scrollen. 800ms statt 600:
+      // die Abgrenzung leistet ohnehin die Senkrechte, und ein enges Zeitfenster
+      // bestraft nur den, der langsamer wischt.
+      if (dx >= 60 && dy <= 40 && Date.now() - t0 <= 800) goBack();
+    };
+    window.addEventListener("touchstart", start, { passive: true });
+    window.addEventListener("touchend",   ende,  { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", start);
+      window.removeEventListener("touchend",   ende);
+    };
+  }, [goBack]);
+
   const goHome = () => { setActiveCourse(null); setSessionPhase("select"); setActiveStudent(null); setLastAction(null); setNameFilter(""); setHwFilter(""); };
 
   // Die Kursblöcke des Exports wurden zweimal inline gebaut und wichen in der
@@ -2155,7 +2201,7 @@ function App() {
 
       <div style={{ ...S.sectionLbl, marginTop:24 }}>Info</div>
       <div style={{ fontSize:13, color:C.textDim, lineHeight:"1.9", background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
-        <strong style={{ color:C.text }}>ClassPulse — Participation Tracker v1.2</strong><br/>
+        <strong style={{ color:C.text }}>ClassPulse — Participation Tracker v1.2.1</strong><br/>
         Daten lokal auf diesem Gerät (localStorage).<br/>
         Kein Server · kein Login · kein Tracking.<br/><br/>
         <strong style={{ color:C.text }}>Bewertungsbögen:</strong><br/>
