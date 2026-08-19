@@ -130,17 +130,22 @@ ReportLab läuft lokal — dafür ist die Qualität deutlich besser.
   passiert am Halbjahresende durch die Lehrkraft, nicht in der Stunde
 - **Farbenblind-freundlich** — immer Text + Farbe, nie Farbe als einziges Signal
 - **Keine Popups** — Hinweise nur passiv im Schülerdetail
-- **Detailseiten ohne Zahlen** — Schüler-PDFs zeigen nur Tendenzen
-  ("über Erwartung"), keine Zählwerte. Zahlen nur in der internen Klassenliste
+- **Schüler-Seiten = der echte Grootmoor-Bogen** — reproduzieren das Original-Blatt
+  „Bewertung von Leistungen in der laufenden Unterrichtsarbeit" wortgleich, inkl.
+  seiner 5-Stufen-Skala. ClassPulse trägt nur die Lehrkraft-Zeile ein (ein Kreuz
+  pro Bereich, keine Zahlen), die Schülerzeile bleibt leer. Zahlen nur in der
+  internen Klassenliste
 
 ---
 
 ## Bewertungsbögen
 
-Zwei Systeme, automatisch zugeordnet:
+Ein Blatt für alle Fächer — der Grootmoor-Bogen „Bewertung von Leistungen in der
+laufenden Unterrichtsarbeit" (Inhalt / Fachmethoden / Sprache und Kommunikation).
+Zwei Kriterien-Sets speisen dessen drei Bereiche, automatisch zugeordnet:
 
-**Fremdsprachen-Bogen** (8a Englisch, 12. Kl. Englisch) — 8 Kriterien
-**Allgemeiner Grootmoor-Bogen** (alle anderen) — 8 Kriterien (3 Inhalt / 2 Fachmethoden / 3 Sprache)
+**Fremdsprachen** (8a Englisch, 12. Kl. Englisch) — 9 Kriterien, 8 davon auf dem Bogen
+**Allgemein** (alle anderen) — 8 Kriterien (3 Inhalt / 2 Fachmethoden / 3 Sprache & Komm.)
 
 Details in `CLASSPULSE_PDF_RULES.md`.
 

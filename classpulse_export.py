@@ -1,5 +1,23 @@
 #!/usr/bin/env python3
-"""ClassPulse PDF v3 — farbenblind-freundlich: Text + Farbe"""
+"""ClassPulse PDF v4 — reproduziert den echten Grootmoor-Bogen
+
+Seite 1 (intern) bleibt eine ClassPulse-eigene Klassenliste — die geht nie an
+Schüler raus, muss also nicht am Schulformular hängen.
+
+Ab Seite 2: eine Seite pro Schüler, die das Original-Blatt „Bewertung von
+Leistungen in der laufenden Unterrichtsarbeit" nachbildet — FACH/NAME
+vorausgefüllt, dieselben drei Tabellen (Inhalt / Fachmethoden / Sprache und
+Kommunikation) mit denselben fünf Spalten und denselben Aufzählungspunkten
+wie das Original. ClassPulse trägt nur EIN Kreuz pro Zeile ein (Lehrkraft-
+Einschätzung, aus den Beobachtungen aggregiert) und die Note der Lehrkraft
+unten rechts. Die Schülerzeile und „Meine Noteneinschätzung" bleiben leer —
+das ist Selbsteinschätzung, die kreuzt der Schüler von Hand an.
+
+Das Blatt gilt jetzt auch für Fremdsprachenkurse (nicht nur Allgemein) — die
+9 ClassPulse-Kriterien pro Kurstyp sind darauf gemappt (bogenBereich), aber
+nur zur internen Berechnung. Gedruckt werden IMMER die Original-Bullets, weil
+das Blatt für jedes Fach dasselbe ist.
+"""
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -30,86 +48,194 @@ RED_LIGHT   = colors.HexColor("#FDECEA")
 AMBER       = colors.HexColor("#8B6914")
 AMBER_LIGHT = colors.HexColor("#FEF9E7")
 
-COURSE_NAME = "8a Englisch"
-TEACHER     = "Philipp Tran-Huynh"
-HALF_YEAR   = "Schuljahr 2026/27 · Halbjahr 1"
-EXPORT_DATE = datetime.date.today().strftime("%-d. %B %Y")
+# ── KONTEXT — bei jedem Export durch die echten Werte aus dem Backup und aus
+#    COURSES_META (index.html) ersetzen ──────────────────────────────────────
+COURSE_NAME   = "8a Englisch"
+CRITERIA_TYPE = "fremdsprachen"        # "fremdsprachen" oder "general"
+NOTENFORMAT   = "drittelnoten"         # "drittelnoten" oder "punkte" (Oberstufe)
+MITARBEIT_PCT = 60                     # siehe COURSES_META
+TEACHER       = "Philipp Tran-Huynh"
+HALF_YEAR     = "Schuljahr 2026/27 · Halbjahr 1"
+EXPORT_DATE   = datetime.date.today().strftime("%-d. %B %Y")
 
-FS_CRITERIA = [
-    ("Beteiligung",    "Engagement"),
-    ("Beiträge",       "Engagement"),
-    ("HA & Heft",      "Arbeitsverhalten"),
-    ("Verantwortung",  "Arbeitsverhalten"),
-    ("Vokabeln/Gram.", "Sprache"),
-    ("Sprachfluss",    "Sprache"),
-    ("Fremdsprache",   "Sprache"),
-    ("Tests",          "Sprache"),
+# ── KRITERIEN — Spiegel von FREMDSPRACHEN_CRITERIA / GENERAL_CRITERIA in
+#    index.html. bogenBereich=None heißt: eigene Beobachtung, kein Platz auf
+#    dem Original-Blatt (nur fs1 Beteiligung). (id, short, bogenBereich) ──
+FREMDSPRACHEN_CRITERIA = [
+    ("fs2",  "Beiträge",               "Inhalt"),
+    ("fs10", "Argumente",              "Inhalt"),
+    ("fs11", "Reflexion",              "Inhalt"),
+    ("fs12", "Bezugstexte",            "Fachmethoden"),
+    ("fs13", "Arbeitsplanung",         "Fachmethoden"),
+    ("fs5",  "Vokabeln/Gram.",         "Sprache & Komm."),
+    ("fs9",  "Sprachfluss & Zielspr.", "Sprache & Komm."),
+    ("fs14", "Auf andere eingehen",    "Sprache & Komm."),
+    ("fs1",  "Beteiligung",            None),
+]
+GENERAL_CRITERIA = [
+    ("gi1", "Sachlich richtig",    "Inhalt"),
+    ("gi2", "Argumente",           "Inhalt"),
+    ("gi3", "Reflexion",           "Inhalt"),
+    ("gm1", "Bezugstexte",         "Fachmethoden"),
+    ("gm2", "Arbeitsplanung",      "Fachmethoden"),
+    ("gs1", "Fachsprache",         "Sprache & Komm."),
+    ("gs2", "Sprachrichtigkeit",   "Sprache & Komm."),
+    ("gs3", "Auf andere eingehen", "Sprache & Komm."),
 ]
 
+def criteria_for(criteria_type):
+    return FREMDSPRACHEN_CRITERIA if criteria_type == "fremdsprachen" else GENERAL_CRITERIA
+
+BEREICHE = ["Inhalt", "Fachmethoden", "Sprache & Komm."]
+
+# ── ORIGINAL-TEXT DES GROOTMOOR-BOGENS — wortgleich, weil das Blatt für jedes
+#    Fach dasselbe ist. Nicht aus den ClassPulse-Kriterien ableiten. ─────────
+SHEET_TITLE = "Bewertung von Leistungen in der laufenden Unterrichtsarbeit"
+SHEET_INTRO = (
+    "Die folgende Übersicht führt Kriterien auf, die für die Bewertung von Leistungen verwendet werden. "
+    "Bewertet werden mündliche, schriftliche und praktische Leistungen, die z.B. in Unterrichtsgesprächen, "
+    "bei Präsentationen, in Einzelarbeit oder in kooperativen Phasen erbracht werden.<br/>"
+    "Es kann vorkommen, dass nicht alle Kriterien zum erteilten Unterricht passen. Über die Gewichtung der "
+    "Kriterien entscheidet die Lehrkraft in pädagogischer Verantwortung."
+)
+SHEET_ROW_LABEL = "Meine Leistungen erfüllen die Anforderungen …"
+SHEET_COLUMNS   = ["nicht oder nur\nin Ansätzen", "in Grundzügen", "weitgehend", "umfassend", "in besonderem\nMaße"]
+SHEET_FOOTNOTE  = "Ergänzend kann es in einzelnen Fächern weitere fachbezogene Kriterien geben."
+
+SHEET_BULLETS = {
+    "Inhalt": [
+        "Meine Beiträge und Arbeitsergebnisse passen zur Aufgabe, tragen zur Lösung bei und sind sachlich richtig.",
+        "Meine Beiträge /Argumente bauen sinnvoll aufeinander auf und erschließen viele Seiten eines Problems.",
+        "Ich verstehe die Inhalte des Unterrichts ganz genau und stelle sie verständlich dar.",
+        "Ich nutze Vorwissen aus Schule und Alltag, setze es sinnvoll mit anderem in Verbindung und nutze es, "
+        "um Neues zu erschließen.",
+        "Ich nutze eigenständige, kreative Lösungswege und komme zu eigenen Lösungen.",
+        "Ich reflektiere Ergebnisse kritisch und kann sie im Sachzusammenhang einordnen und deuten.",
+        "Ich stelle mich auch schwierigen Aufgaben.",
+        "Ich entwickle weiterführende Fragestellungen.",
+    ],
+    "Fachmethoden": [
+        "Ich gehe mit Bezugstexten, Medien und Material angemessen und sinnvoll um.",
+        "Ich verwende Fachmethoden angemessen.",
+        "Ich wähle Werkzeuge situationsgerecht aus und nutze sie sicher.",
+        "Ich kann meine Arbeit sinnvoll planen, einteilen und durchführen.",
+    ],
+    "Sprache & Komm.": [
+        "Ich drücke mich treffend und differenziert aus und verwende die Fachsprache richtig.",
+        "Meine Beiträge sind sprachlich richtig.",
+        "Wenn ich mit anderen spreche, bleibe ich beim Thema, damit wir gemeinsam zu einem guten Ergebnis kommen.",
+        "Meine Beiträge sind sinnvoll gegliedert und bauen aufeinander auf.",
+        "Ich berücksichtige die Beiträge von Mitschülerinnen und Mitschülern.",
+        "Ich stoße Arbeitsprozesse in Gruppen an und bringe die Arbeit in der Gruppe voran.",
+        "Ich bringe geeignete eigene Arbeitsergebnisse in den Arbeitsprozess der Gruppe ein.",
+    ],
+}
+
+# ── SKALA (5 Spalten des Original-Blatts) — dieselben Schwellen wie der
+#    Notenvorschlag in der App (80/60/45/30%), nur ohne die unterste 15%-
+#    Trennung, weil hier nur 5 statt 6 Stufen zur Verfügung stehen. ──────────
+def scale_index(ratio):
+    if ratio >= 0.80: return 4
+    if ratio >= 0.60: return 3
+    if ratio >= 0.45: return 2
+    if ratio >= 0.30: return 1
+    return 0
+
+# ── NOTENVORSCHLAG — exakter Spiegel von getGradeProposal in index.html,
+#    inklusive der gedeckelten Tests/HA-Quote/Material-Quote-Korrektur. ──────
+GRADE_BANDS_NOTEN = [
+    ("1–2",  "sehr gut / gut"),
+    ("2–3",  "gut / befriedigend"),
+    ("3",    "befriedigend"),
+    ("3–4",  "befriedigend / ausreichend"),
+    ("4–5",  "ausreichend / mangelhaft"),
+    ("5–6",  "mangelhaft / ungenügend"),
+]
+GRADE_BANDS_PUNKTE = [
+    ("12–15", "sehr gut / gut"),
+    ("9–11",  "gut / befriedigend"),
+    ("7–8",   "befriedigend"),
+    ("5–6",   "befriedigend / ausreichend"),
+    ("2–4",   "ausreichend / mangelhaft"),
+    ("0–1",   "mangelhaft / ungenügend"),
+]
+MIN_ENTRIES, MIN_DAYS = 6, 3
+
+def base_band_index(ratio):
+    if ratio >= 0.80: return 0
+    if ratio >= 0.60: return 1
+    if ratio >= 0.45: return 2
+    if ratio >= 0.30: return 3
+    if ratio >= 0.15: return 4
+    return 5
+
+def test_delta(avg, notenformat):
+    if avg is None: return 0
+    if notenformat == "punkte":
+        if avg >= 11: return -1
+        if avg <= 5:  return 1
+        return 0
+    if avg <= 2.0: return -1
+    if avg >= 4.0: return 1
+    return 0
+
+def hw_delta(quote):
+    return 1 if (quote is not None and quote < 0.80) else 0
+
+def material_delta(quote):
+    return 1 if (quote is not None and quote < 0.85) else 0
+
+def grade_proposal(entry_count, day_count, ratio, notenformat, test_avg=None, hw_quote=None, mat_quote=None):
+    """None, wenn die Mindestmenge (6 Einträge / 3 Tage) noch nicht erreicht ist."""
+    if entry_count < MIN_ENTRIES or day_count < MIN_DAYS:
+        return None
+    bands = GRADE_BANDS_PUNKTE if notenformat == "punkte" else GRADE_BANDS_NOTEN
+    base_idx = base_band_index(ratio)
+    net = max(-1, min(1, test_delta(test_avg, notenformat) + hw_delta(hw_quote) + material_delta(mat_quote)))
+    final_idx = max(0, min(5, base_idx + net))
+    return {"grade": bands[final_idx][0], "label": bands[final_idx][1],
+            "base_grade": bands[base_idx][0], "corrected": final_idx != base_idx}
+
+def score_label(notenformat):
+    return "Punkte" if notenformat == "punkte" else "Note"
+
+# ── STICHPROBEN-DATEN — bei jedem Export durch die echten Beobachtungen aus
+#    dem Backup ersetzen (Kriterien-IDs siehe FREMDSPRACHEN_CRITERIA oben).
+#    hw_quote/material_quote/test_avg: None lassen, wenn die jeweilige
+#    Mindestmenge (6 / 8 / 2) noch nicht erreicht ist. ───────────────────────
 STUDENTS = [
     {
         "name": "Ahuja, Priya",
         "observations": {
-            "Beteiligung":    (8,1), "Beiträge":       (6,2),
-            "HA & Heft":      (9,0), "Verantwortung":  (7,1),
-            "Vokabeln/Gram.": (5,3), "Sprachfluss":    (6,2),
-            "Fremdsprache":   (8,1), "Tests":          (4,1),
+            "fs1":(8,1), "fs2":(6,2), "fs10":(7,1), "fs11":(5,2),
+            "fs12":(6,1), "fs13":(7,0), "fs5":(5,3), "fs9":(6,2), "fs14":(7,1),
         },
-        "hw_pct": 94, "absent": 1,
+        "hw_quote": 0.94, "material_quote": 0.97, "test_avg": 1.7, "absent": 1,
         "notes": [
             ("2026-09-14", "Sehr starke Beteiligung in der Gruppenarbeit."),
             ("2026-10-02", "Spricht konsequent Englisch, auch wenn es schwierig wird."),
         ],
-        "trend": "stark",
     },
     {
         "name": "Bekele, Samuel",
         "observations": {
-            "Beteiligung":    (3,5), "Beiträge":       (2,4),
-            "HA & Heft":      (4,3), "Verantwortung":  (2,5),
-            "Vokabeln/Gram.": (3,4), "Sprachfluss":    (2,5),
-            "Fremdsprache":   (1,6), "Tests":          (0,3),
+            "fs1":(3,5), "fs2":(2,4), "fs10":(2,3), "fs11":(1,4),
+            "fs12":(3,3), "fs13":(2,4), "fs5":(3,4), "fs9":(1,5), "fs14":(2,4),
         },
-        "hw_pct": 51, "absent": 4,
+        "hw_quote": 0.51, "material_quote": 0.68, "test_avg": 4.3, "absent": 4,
         "notes": [
             ("2026-09-22", "Wechselt häufig ins Deutsche, mehrfach angesprochen."),
             ("2026-10-15", "HA dreimal nicht dabei — Gespräch geführt."),
         ],
-        "trend": "schwach",
     },
     {
         "name": "Chen, Mei-Lin",
         "observations": {
-            "Beteiligung":    (6,2), "Beiträge":       (5,1),
-            "HA & Heft":      (8,0), "Verantwortung":  (6,1),
-            "Vokabeln/Gram.": (7,1), "Sprachfluss":    (5,2),
-            "Fremdsprache":   (7,0), "Tests":          (3,0),
+            "fs1":(6,2), "fs2":(5,1), "fs10":(6,1), "fs11":(4,2),
+            "fs12":(6,0), "fs13":(5,1), "fs5":(7,1), "fs9":(5,2), "fs14":(6,1),
         },
-        "hw_pct": 100, "absent": 0,
+        "hw_quote": 1.00, "material_quote": 1.00, "test_avg": 1.3, "absent": 0,
         "notes": [("2026-10-08", "Exzellente Vorbereitung, HA immer vollständig.")],
-        "trend": "stark",
-    },
-    {
-        "name": "Döring, Luca",
-        "observations": {
-            "Beteiligung":    (4,3), "Beiträge":       (4,2),
-            "HA & Heft":      (5,2), "Verantwortung":  (4,2),
-            "Vokabeln/Gram.": (4,3), "Sprachfluss":    (3,3),
-            "Fremdsprache":   (4,2), "Tests":          (2,1),
-        },
-        "hw_pct": 78, "absent": 2, "notes": [], "trend": "mittel",
-    },
-    {
-        "name": "Eriksen, Sofie",
-        "observations": {
-            "Beteiligung":    (7,1), "Beiträge":       (6,1),
-            "HA & Heft":      (7,1), "Verantwortung":  (7,0),
-            "Vokabeln/Gram.": (6,1), "Sprachfluss":    (7,0),
-            "Fremdsprache":   (8,0), "Tests":          (3,0),
-        },
-        "hw_pct": 92, "absent": 1,
-        "notes": [("2026-09-30", "Sehr flüssiges Englisch, native-level Aussprache.")],
-        "trend": "stark",
     },
 ]
 
@@ -119,92 +245,98 @@ def make_styles():
         "page_subtitle": ParagraphStyle("ps",  fontName="Montserrat",         fontSize=10, textColor=GREY_TEXT, spaceAfter=5*mm, leading=14),
         "section_lbl":   ParagraphStyle("sl",  fontName="Montserrat-Bold",    fontSize=9,  textColor=TEAL, spaceAfter=3*mm, leading=11),
         "table_header":  ParagraphStyle("th",  fontName="Montserrat-Bold",    fontSize=8,  textColor=colors.white, leading=10),
+        "table_header_sm": ParagraphStyle("ths", fontName="Montserrat-Bold",  fontSize=6.7,textColor=colors.white, leading=8, alignment=1),
         "table_cell":    ParagraphStyle("tc",  fontName="Montserrat",         fontSize=8.5,textColor=BLACK, leading=12),
         "table_dim":     ParagraphStyle("td",  fontName="Montserrat",         fontSize=8,  textColor=GREY_TEXT, leading=11),
         "student_name":  ParagraphStyle("sn",  fontName="Montserrat-Bold",    fontSize=14, textColor=PRUSSIAN, spaceAfter=1*mm, leading=17),
         "student_meta":  ParagraphStyle("sm",  fontName="Montserrat",         fontSize=9,  textColor=GREY_TEXT, spaceAfter=5*mm, leading=12),
-        "area_label":    ParagraphStyle("al",  fontName="Montserrat-Bold",    fontSize=8,  textColor=TEAL, spaceAfter=2*mm, leading=10),
+        "area_label":    ParagraphStyle("al",  fontName="Montserrat-Bold",    fontSize=9,  textColor=TEAL, spaceAfter=2*mm, spaceBefore=4*mm, leading=11),
         "crit_name":     ParagraphStyle("cn",  fontName="Montserrat-SemiBold",fontSize=9,  textColor=BLACK, leading=12),
         "note_text":     ParagraphStyle("nt",  fontName="Montserrat-Italic",  fontSize=8.5,textColor=BLACK, leading=12),
         "note_date":     ParagraphStyle("nd",  fontName="Montserrat",         fontSize=7.5,textColor=GREY_TEXT, leading=10, alignment=2),
         "footer":        ParagraphStyle("ft",  fontName="Montserrat",         fontSize=7.5,textColor=GREY_TEXT, leading=10),
         "disclaimer":    ParagraphStyle("di",  fontName="Montserrat-Italic",  fontSize=7.5,textColor=GREY_TEXT, leading=10, spaceAfter=2*mm),
+        # Original-Blatt
+        "sheet_header":  ParagraphStyle("sh",  fontName="Montserrat",         fontSize=10, textColor=BLACK, leading=13),
+        "sheet_title":   ParagraphStyle("st",  fontName="Montserrat-Bold",    fontSize=14, textColor=PRUSSIAN, spaceBefore=3*mm, spaceAfter=3*mm, leading=17),
+        "sheet_intro":   ParagraphStyle("si",  fontName="Montserrat",         fontSize=8.3,textColor=BLACK, leading=11.5, spaceAfter=3*mm),
+        "sheet_row":     ParagraphStyle("sr",  fontName="Montserrat",         fontSize=8,  textColor=BLACK, leading=11),
+        "bullet":        ParagraphStyle("bl",  fontName="Montserrat-Italic",  fontSize=8,  textColor=BLACK, leading=11.5, leftIndent=3*mm, spaceAfter=1*mm),
+        "footnote":      ParagraphStyle("fn",  fontName="Montserrat-Italic",  fontSize=8,  textColor=GREY_TEXT, spaceBefore=2*mm, spaceAfter=3*mm),
+        "footer_box":    ParagraphStyle("fb",  fontName="Montserrat-SemiBold",fontSize=9.5,textColor=BLACK, leading=13),
     }
 
-def calc_tendency(pos, neg):
+def obs_ratio(observations):
+    """Gesamt-Ratio über alle Kriterien eines Schülers (für den Notenvorschlag)."""
+    pos = sum(p for p, n in observations.values())
+    neg = sum(n for p, n in observations.values())
+    return pos, neg
+
+def section_counts(observations, criteria, bereich):
+    pos = neg = 0
+    for cid, short, b in criteria:
+        if b != bereich:
+            continue
+        p, n = observations.get(cid, (0, 0))
+        pos += p
+        neg += n
+    return pos, neg
+
+def other_criteria(criteria):
+    """Kriterien ohne bogenBereich — eigene Beobachtung, kein Platz auf dem Blatt."""
+    return [(cid, short) for cid, short, b in criteria if b is None]
+
+def cell_tendency(pos, neg):
     total = pos + neg
     if total == 0:
-        return "–",                  "—",          GREY_TEXT, GREY_LIGHT
+        return "–", GREY_TEXT
     ratio = pos / total
-    if ratio >= 0.70:
-        return "↑ über Erwartung",   "überwiegend positiv",  GREEN,  GREEN_LIGHT
-    elif ratio >= 0.45:
-        return "→ entspricht Erw.",  "ausgeglichen",          AMBER,  AMBER_LIGHT
-    else:
-        return "↓ unter Erwartung",  "überwiegend schwach",  RED,    RED_LIGHT
+    if ratio >= 0.70: return "überwiegend positiv", GREEN
+    if ratio >= 0.45: return "ausgeglichen",         AMBER
+    return "überwiegend schwach", RED
 
-def overall_trend_info(st):
-    if st["trend"] == "stark":
-        return "↑ über Erwartung",  GREEN,  GREEN_LIGHT
-    if st["trend"] == "schwach":
-        return "↓ unter Erwartung", RED,    RED_LIGHT
-    return "→ entspricht Erw.",     AMBER,  AMBER_LIGHT
+# ── SEITE 1 — INTERNE KLASSENLISTE (nicht Teil des Original-Blatts) ─────────
 
-# ── KLASSENLISTE ─────────────────────────────────────────────────────────────
-
-def num_cell_with_label(pos, neg, styles):
-    """Zahl + Tendenz-Label in einer Zelle — farbenblind-freundlich"""
-    total = pos + neg
-    if total == 0:
-        return Paragraph("–", styles["table_dim"])
-    ratio = pos / total
-    if ratio >= 0.70:
-        symbol, tc = "↑", GREEN
-    elif ratio >= 0.45:
-        symbol, tc = "→", AMBER
-    else:
-        symbol, tc = "↓", RED
-    hex_tc = tc.hexval()[2:]
-    # Zahl in schwarz, Symbol farbig darunter
-    return Paragraph(
-        f'+{pos} /−{neg}<br/><font color="#{hex_tc}" size="7">{symbol}</font>',
-        styles["table_cell"]
-    )
-
-def build_overview(styles):
+def build_overview(styles, criteria):
     story = []
     story.append(Paragraph("ClassPulse", styles["page_title"]))
     story.append(Paragraph(f"{COURSE_NAME} · {HALF_YEAR} · Lehrkraft: {TEACHER}", styles["page_subtitle"]))
     story.append(HRFlowable(width="100%", thickness=1.5, color=PRUSSIAN, spaceAfter=4*mm))
     story.append(Paragraph("KLASSENLISTE — INTERNER ÜBERBLICK", styles["section_lbl"]))
+    story.append(Paragraph(
+        "Bereichsspalten entsprechen den drei Tabellen des Original-Bogens — dieselbe "
+        "Aggregation, die auch die Schüler-Seiten hier hinten füllt.",
+        styles["table_dim"]))
+    story.append(Spacer(1, 2*mm))
 
-    cw = [42*mm, 19*mm, 19*mm, 19*mm, 19*mm, 19*mm, 16*mm, 22*mm]
-    hdr = [
-        Paragraph("Name",          styles["table_header"]),
-        Paragraph("Beteiligung",   styles["table_header"]),
-        Paragraph("Beiträge",      styles["table_header"]),
-        Paragraph("HA & Heft",     styles["table_header"]),
-        Paragraph("Vokabeln",      styles["table_header"]),
-        Paragraph("Fremdsprache",  styles["table_header"]),
-        Paragraph("HA-Quote",      styles["table_header"]),
-        Paragraph("Gesamt",        styles["table_header"]),
-    ]
+    cw = [36*mm, 24*mm, 29*mm, 26*mm, 19*mm, 19*mm, 19*mm]
+    hdr = [Paragraph(t, styles["table_header"]) for t in
+           ["Name", "Inhalt", "Fachmethoden", "Sprache & Komm.", "HA-Quote", "Material", "Gesamt"]]
     rows = [hdr]
 
-    for i, st in enumerate(STUDENTS):
+    for st in STUDENTS:
         obs = st["observations"]
-        otlabel, otc, _ = overall_trend_info(st)
-        hex_otc = otc.hexval()[2:]
-        rows.append([
-            Paragraph(st["name"], styles["table_cell"]),
-            num_cell_with_label(*obs.get("Beteiligung",    (0,0)), styles),
-            num_cell_with_label(*obs.get("Beiträge",       (0,0)), styles),
-            num_cell_with_label(*obs.get("HA & Heft",      (0,0)), styles),
-            num_cell_with_label(*obs.get("Vokabeln/Gram.", (0,0)), styles),
-            num_cell_with_label(*obs.get("Fremdsprache",   (0,0)), styles),
-            Paragraph(f'{st["hw_pct"]}%', styles["table_cell"]),
-            Paragraph(f'<font color="#{hex_otc}"><b>{otlabel}</b></font>', styles["table_cell"]),
-        ])
+        pos, neg = obs_ratio(obs)
+        total = pos + neg
+        days = MIN_DAYS  # Stichprobendaten haben kein Datum je Eintrag — echte Exporte zählen Tage.
+        entry_count = total
+        ratio = pos / total if total else 0
+        proposal = grade_proposal(entry_count, days, ratio, NOTENFORMAT,
+                                   st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
+        gesamt = f"{score_label(NOTENFORMAT)} {proposal['grade']}" if proposal else "—"
+        gesamt_color = PRUSSIAN if proposal else GREY_TEXT
+
+        cells = [Paragraph(st["name"], styles["table_cell"])]
+        for bereich in BEREICHE:
+            p, n = section_counts(obs, criteria, bereich)
+            label, tc = cell_tendency(p, n)
+            hex_tc = tc.hexval()[2:]
+            cells.append(Paragraph(f'+{p}/−{n}<br/><font color="#{hex_tc}" size="7">{label}</font>', styles["table_cell"]))
+        cells.append(Paragraph(f'{round(st["hw_quote"]*100)}%' if st.get("hw_quote") is not None else "–", styles["table_cell"]))
+        cells.append(Paragraph(f'{round(st["material_quote"]*100)}%' if st.get("material_quote") is not None else "–", styles["table_cell"]))
+        hex_g = gesamt_color.hexval()[2:]
+        cells.append(Paragraph(f'<font color="#{hex_g}"><b>{gesamt}</b></font>', styles["table_cell"]))
+        rows.append(cells)
 
     t = Table(rows, colWidths=cw, repeatRows=1)
     t.setStyle(TableStyle([
@@ -217,7 +349,7 @@ def build_overview(styles):
         ("LEFTPADDING",   (0,0),(-1,-1), 4),
         ("RIGHTPADDING",  (0,0),(-1,-1), 4),
         ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
-        *[("BACKGROUND",  (0,i+1),(-1,i+1), GREY_LIGHT if i%2==0 else colors.white)
+        *[("BACKGROUND",  (0,i+1),(-1,i+1), GREY_LIGHT if i % 2 == 0 else colors.white)
           for i in range(len(STUDENTS))],
     ]))
     story.append(t)
@@ -227,82 +359,92 @@ def build_overview(styles):
         styles["footer"]))
     return story
 
-# ── DETAILSEITEN ─────────────────────────────────────────────────────────────
+# ── SEITEN 2+ — REPRODUKTION DES ORIGINAL-BOGENS, EINE SEITE PRO SCHÜLER ────
 
-def build_detail(st, styles):
-    story = []
-    story.append(PageBreak())
-
-    otlabel, otc, otbg = overall_trend_info(st)
-    hex_otc = otc.hexval()[2:]
+def build_official_sheet(st, criteria, styles):
+    story = [PageBreak()]
 
     hdr = Table([[
-        Paragraph(st["name"], styles["student_name"]),
-        Paragraph(f'<font color="#{hex_otc}"><b>{otlabel}</b></font>',
-                  ParagraphStyle("oh", fontName="Montserrat-Bold", fontSize=11,
-                                 textColor=otc, leading=14, alignment=2)),
-    ]], colWidths=[110*mm, 65*mm])
-    hdr.setStyle(TableStyle([
-        ("VALIGN",        (0,0),(-1,-1), "BOTTOM"),
-        ("LINEBELOW",     (0,0),(-1,-1), 1.5, PRUSSIAN),
-        ("BOTTOMPADDING", (0,0),(-1,-1), 3),
-    ]))
+        Paragraph(f"FACH: <u>{COURSE_NAME}</u>", styles["sheet_header"]),
+        Paragraph(f"NAME: <u>{st['name']}</u>",  styles["sheet_header"]),
+    ]], colWidths=[85*mm, 90*mm])
+    hdr.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
     story.append(hdr)
-    story.append(Spacer(1, 1*mm))
-    story.append(Paragraph(
-        f"{COURSE_NAME} · {HALF_YEAR} · Fehlzeiten: {st['absent']} Std. · HA-Quote: {st['hw_pct']}%",
-        styles["student_meta"]))
+    story.append(Paragraph(SHEET_TITLE, styles["sheet_title"]))
+    story.append(Paragraph(SHEET_INTRO, styles["sheet_intro"]))
 
-    # Criteria by area
-    areas = {}
-    for crit, area in FS_CRITERIA:
-        areas.setdefault(area, []).append(crit)
+    for bereich in BEREICHE:
+        story.append(Paragraph(bereich.upper() if bereich != "Sprache & Komm."
+                                else "SPRACHE UND KOMMUNIKATION", styles["area_label"]))
 
-    for area, crits in areas.items():
-        story.append(Paragraph(area.upper(), styles["area_label"]))
-        crit_cells = []
-        for crit in crits:
-            pos, neg = st["observations"].get(crit, (0,0))
-            tend_short, tend_long, tc, bg = calc_tendency(pos, neg)
+        pos, neg = section_counts(st["observations"], criteria, bereich)
+        total = pos + neg
+        idx = scale_index(pos / total) if total > 0 else None
+
+        col_w = [58*mm] + [23.4*mm]*5
+        header_row = [Paragraph("Einschätzung der <b>Schülerin</b>/des <b>Schülers</b>", styles["table_header_sm"])] + \
+                     [Paragraph(c, styles["table_header_sm"]) for c in SHEET_COLUMNS]
+        rating_row = [Paragraph(SHEET_ROW_LABEL, styles["sheet_row"])] + \
+                     [Paragraph("✕" if idx == i else "", styles["table_cell"]) for i in range(5)]
+        t = Table([header_row, rating_row], colWidths=col_w)
+        t.setStyle(TableStyle([
+            ("BACKGROUND",    (0,0),(-1,0),  DARK_HEADER),
+            ("GRID",          (0,0),(-1,-1), 0.4, colors.HexColor("#BBBBBB")),
+            ("TOPPADDING",    (0,0),(-1,-1), 4),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 4),
+            ("LEFTPADDING",   (0,0),(-1,-1), 3),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 3),
+            ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
+            ("ALIGN",         (1,0),(-1,-1), "CENTER"),
+            *([("BACKGROUND", (idx+1,1),(idx+1,1), TEAL_LIGHT)] if idx is not None else []),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 1.5*mm))
+        for b in SHEET_BULLETS[bereich]:
+            story.append(Paragraph(f"•  {b}", styles["bullet"]))
+
+    story.append(Paragraph(SHEET_FOOTNOTE, styles["footnote"]))
+
+    others = other_criteria(criteria)
+    if others:
+        lines = []
+        for cid, short in others:
+            p, n = st["observations"].get(cid, (0, 0))
+            label, tc = cell_tendency(p, n)
             hex_tc = tc.hexval()[2:]
+            lines.append(f'{short}: <font color="#{hex_tc}"><b>{label}</b></font>')
+        story.append(Paragraph(
+            "<i>Zusätzlich beobachtet, nicht Teil dieses Bogens:</i> " + " · ".join(lines),
+            styles["table_dim"]))
+        story.append(Spacer(1, 2*mm))
 
-            # Kachel: Name links, Tendenz rechts (Text + Symbol, kein reines Farbsignal)
-            cell = Table([[
-                Paragraph(crit, styles["crit_name"]),
-                Paragraph(
-                    f'<font color="#{hex_tc}"><b>{tend_short}</b></font><br/>'
-                    f'<font color="#555555" size="7">{tend_long}</font>',
-                    ParagraphStyle("tv", fontName="Montserrat-Bold", fontSize=8.5,
-                                   textColor=tc, leading=12, alignment=2)),
-            ]], colWidths=[42*mm, 40*mm])
-            cell.setStyle(TableStyle([
-                ("BACKGROUND",    (0,0),(-1,-1), bg),
-                ("LINEBEFORE",    (0,0),(0,-1),  3, tc),
-                ("TOPPADDING",    (0,0),(-1,-1), 6),
-                ("BOTTOMPADDING", (0,0),(-1,-1), 6),
-                ("LEFTPADDING",   (0,0),(-1,-1), 7),
-                ("RIGHTPADDING",  (0,0),(-1,-1), 7),
-                ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
-            ]))
-            crit_cells.append(cell)
+    pos, neg = obs_ratio(st["observations"])
+    total = pos + neg
+    ratio = pos / total if total else 0
+    proposal = grade_proposal(total, MIN_DAYS, ratio, NOTENFORMAT,
+                               st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
+    lehrkraft_note = f"{score_label(NOTENFORMAT)} {proposal['grade']}" if proposal else "noch nicht möglich"
 
-        for i in range(0, len(crit_cells), 2):
-            right = crit_cells[i+1] if i+1 < len(crit_cells) else ""
-            pair = Table([[crit_cells[i], right]], colWidths=[87*mm, 87*mm])
-            pair.setStyle(TableStyle([
-                ("LEFTPADDING",   (0,0),(-1,-1), 0),
-                ("RIGHTPADDING",  (0,0),(-1,-1), 3),
-                ("TOPPADDING",    (0,0),(-1,-1), 0),
-                ("BOTTOMPADDING", (0,0),(-1,-1), 2),
-                ("VALIGN",        (0,0),(-1,-1), "TOP"),
-            ]))
-            story.append(pair)
-        story.append(Spacer(1, 3*mm))
+    footer = Table([[
+        Paragraph("Meine Noteneinschätzung: ____________", styles["footer_box"]),
+        Paragraph(f"Note der Lehrkraft: {lehrkraft_note}", styles["footer_box"]),
+    ]], colWidths=[85*mm, 90*mm])
+    footer.setStyle(TableStyle([
+        ("BOX",           (0,0),(-1,-1), 0.6, colors.HexColor("#999999")),
+        ("LINEAFTER",     (0,0),(0,-1),  0.6, colors.HexColor("#999999")),
+        ("TOPPADDING",    (0,0),(-1,-1), 6),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 6),
+        ("LEFTPADDING",   (0,0),(-1,-1), 6),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 6),
+        ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
+    ]))
+    story.append(Spacer(1, 3*mm))
+    story.append(footer)
 
-    # Notes
     if st["notes"]:
+        story.append(Spacer(1, 4*mm))
         story.append(HRFlowable(width="100%", thickness=0.5, color=GREY_TEXT, spaceAfter=3*mm))
-        story.append(Paragraph("BEOBACHTUNGEN & NOTIZEN", styles["area_label"]))
+        story.append(Paragraph("BEOBACHTUNGEN & NOTIZEN (für das Gespräch, nicht auf dem Original-Bogen)", styles["area_label"]))
         for date, note in st["notes"]:
             nb = Table([[
                 Paragraph(f"→ {note}", styles["note_text"]),
@@ -320,14 +462,11 @@ def build_detail(st, styles):
             story.append(nb)
             story.append(Spacer(1, 1.5*mm))
 
-    story.append(Spacer(1, 5*mm))
+    story.append(Spacer(1, 4*mm))
     story.append(HRFlowable(width="100%", thickness=0.3, color=GREY_TEXT, spaceAfter=2*mm))
     story.append(Paragraph(
-        "Die Einschätzungen basieren auf pädagogischen Beobachtungen im Unterricht. "
-        "Über die Gewichtung der Kriterien entscheidet die Lehrkraft in pädagogischer Verantwortung (Grootmoor-Bogen).",
-        styles["disclaimer"]))
-    story.append(Paragraph(
-        f"ClassPulse · {COURSE_NAME} · Export {EXPORT_DATE} · Lehrkraft: {TEACHER}",
+        f"ClassPulse · {COURSE_NAME} · Export {EXPORT_DATE} · Lehrkraft: {TEACHER} · "
+        f"Zählt {MITARBEIT_PCT}% der Gesamtnote",
         styles["footer"]))
     return story
 
@@ -337,10 +476,11 @@ def build_pdf(path):
         topMargin=18*mm, bottomMargin=18*mm,
         title=f"ClassPulse — {COURSE_NAME}", author=TEACHER)
     styles = make_styles()
-    story  = build_overview(styles)
+    criteria = criteria_for(CRITERIA_TYPE)
+    story = build_overview(styles, criteria)
     for st in STUDENTS:
-        story += build_detail(st, styles)
+        story += build_official_sheet(st, criteria, styles)
     doc.build(story)
     print(f"✓ {path}")
 
-build_pdf("/home/claude/classpulse_v3.pdf")
+build_pdf("/home/claude/classpulse_v4.pdf")
