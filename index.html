@@ -81,47 +81,57 @@ const DAYS = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","S
 
 const ENGLISH_COURSES = ["8a Englisch", "12. Kl. Englisch"];
 
-// ── Fremdsprachen: 8 Kriterien exakt aus Grootmoor-Bogen ──
+// ── Fremdsprachen: 9 Kriterien, angepasst an den Grootmoor-Bogen ──
+// bogenBereich = Abschnitt auf dem gedruckten Bogen (Inhalt / Fachmethoden /
+// Sprache & Komm.). null = eigene Beobachtung, die der Bogen nicht kennt und
+// die deshalb auf dem Schülerblatt nicht auftaucht, aber in der App und im
+// Notenvorschlag zählt. Vokabeltests laufen nicht mehr als Kriterium hier,
+// sondern als eigene Datenspur mit gedeckelter Korrektur auf den Notenvorschlag.
 const FREMDSPRACHEN_CRITERIA = [
   {
-    id:"fs1", short:"Beteiligung", area:"Engagement",
-    full:"Beteiligt sich aktiv und konzentriert am Unterrichtsgeschehen.",
-    examples:["Meldet sich regelmäßig", "Ist aufmerksam dabei", "Arbeitet aktiv in Phasen mit"],
-  },
-  {
-    id:"fs2", short:"Beiträge", area:"Engagement",
+    id:"fs2", short:"Beiträge", area:"Inhalt", bogenBereich:"Inhalt",
     full:"Äußert inhaltlich gute Beiträge, die den Unterricht voranbringen.",
     examples:["Bringt neue Ideen ein", "Baut sinnvoll auf anderen auf", "Kommt auf den Punkt"],
   },
   {
-    id:"fs3", short:"HA & Heft", area:"Arbeitsverhalten",
-    full:"Erstellt Hausaufgaben vollständig und sorgfältig; führt Heft/Mappen übersichtlich.",
-    examples:["HA vollständig da", "Heft ordentlich geführt", "Vorbereitung sichtbar"],
+    id:"fs10", short:"Argumente", area:"Inhalt", bogenBereich:"Inhalt",
+    full:"Argumente bauen sinnvoll aufeinander auf und erschließen viele Seiten eines Problems.",
+    examples:["Pro & Contra berücksichtigt", "Belegt seine Aussagen", "Denkt über den ersten Punkt hinaus"],
   },
   {
-    id:"fs4", short:"Verantwortung", area:"Arbeitsverhalten",
-    full:"Übernimmt Verantwortung für den eigenen Lern- und Arbeitsprozess, hält sich an Regeln.",
-    examples:["Arbeitet selbstständig", "Hält Regeln ein", "Motiviert auch in Gruppenarbeit"],
+    id:"fs11", short:"Reflexion", area:"Inhalt", bogenBereich:"Inhalt",
+    full:"Reflektiert Ergebnisse kritisch und ordnet sie im Sachzusammenhang ein.",
+    examples:["'Das stimmt, aber...'", "Vergleicht mit Vorwissen", "Hinterfragt eigene Aussagen am Stundenende"],
   },
   {
-    id:"fs5", short:"Vokabeln/Gram.", area:"Sprache",
+    id:"fs12", short:"Bezugstexte", area:"Fachmethoden", bogenBereich:"Fachmethoden",
+    full:"Geht mit Bezugstexten, Medien und Material angemessen und sinnvoll um.",
+    examples:["Zitiert korrekt aus dem Text", "Nutzt Karte/Grafik richtig", "Belegt Aussagen mit Material"],
+  },
+  {
+    id:"fs13", short:"Arbeitsplanung", area:"Fachmethoden", bogenBereich:"Fachmethoden",
+    full:"Kann Arbeit sinnvoll planen, einteilen und durchführen.",
+    examples:["Fängt sofort an in Gruppenarbeit", "Teilt Aufgaben sinnvoll auf", "Kommt zum Ergebnis in der Zeit"],
+  },
+  {
+    id:"fs5", short:"Vokabeln/Gram.", area:"Sprache & Komm.", bogenBereich:"Sprache & Komm.",
     full:"Verwendet Vokabeln und Grammatik angemessen.",
     examples:["Trifft die richtigen Wörter", "Grammatik weitgehend korrekt", "Variierter Wortschatz"],
   },
   {
-    id:"fs6", short:"Sprachfluss", area:"Sprache",
-    full:"Zeigt in mündlichen Phasen flüssigen Sprachfluss und korrekte Aussprache.",
-    examples:["Spricht ohne lange Pausen", "Aussprache verständlich", "Formuliert flüssig"],
+    id:"fs9", short:"Sprachfluss & Zielsprache", area:"Sprache & Komm.", bogenBereich:"Sprache & Komm.",
+    full:"Zeigt flüssigen Sprachfluss und korrekte Aussprache; verwendet im Unterricht durchgängig die Fremdsprache.",
+    examples:["Spricht ohne lange Pausen", "Korrigiert sich selbst auf Englisch", "Auch bei Schwierigkeiten auf Englisch"],
   },
   {
-    id:"fs7", short:"Fremdsprache", area:"Sprache",
-    full:"Verwendet im Unterricht durchgängig die Fremdsprache.",
-    examples:["Spricht kein Deutsch", "Korrigiert sich selbst auf Englisch", "Auch bei Schwierigkeiten auf Englisch"],
+    id:"fs14", short:"Auf andere eingehen", area:"Sprache & Komm.", bogenBereich:"Sprache & Komm.",
+    full:"Berücksichtigt Beiträge von Mitschülern; bringt eigene Gedanken ein statt nur zu wiederholen.",
+    examples:["'Ich ergänze, was X gesagt hat...'", "Greift Ideen anderer auf und entwickelt sie weiter", "− wenn Gesagtes wiederholt wird, ohne einen eigenen Gedanken zu ergänzen"],
   },
   {
-    id:"fs8", short:"Tests", area:"Sprache",
-    full:"Zeigt in Vokabel- und Grammatiktests, dass er/sie regelmäßig lernt und wiederholt.",
-    examples:["Note 1–2 → + eintragen", "Note 5–6 → − eintragen", "Note 3–4 → nichts eintragen (Durchschnitt)"],
+    id:"fs1", short:"Beteiligung", area:"Sonstiges", bogenBereich:null,
+    full:"Beteiligt sich aktiv und konzentriert am Unterrichtsgeschehen.",
+    examples:["Meldet sich regelmäßig", "Ist aufmerksam dabei", "Arbeitet aktiv in Phasen mit"],
   },
 ];
 
@@ -129,44 +139,44 @@ const FREMDSPRACHEN_CRITERIA = [
 const GENERAL_CRITERIA = [
   // INHALT (3)
   {
-    id:"gi1", short:"Sachlich richtig", area:"Inhalt",
+    id:"gi1", short:"Sachlich richtig", area:"Inhalt", bogenBereich:"Inhalt",
     full:"Beiträge passen zur Aufgabe und sind sachlich richtig.",
     examples:["Fakten stimmen", "Bleibt beim Thema", "Kein inhaltlicher Fehler"],
   },
   {
-    id:"gi2", short:"Argumente", area:"Inhalt",
+    id:"gi2", short:"Argumente", area:"Inhalt", bogenBereich:"Inhalt",
     full:"Argumente bauen sinnvoll aufeinander auf und erschließen viele Seiten eines Problems.",
     examples:["Pro & Contra berücksichtigt", "Belegt seine Aussagen", "Denkt über den ersten Punkt hinaus"],
   },
   {
-    id:"gi3", short:"Reflexion", area:"Inhalt",
+    id:"gi3", short:"Reflexion", area:"Inhalt", bogenBereich:"Inhalt",
     full:"Reflektiert Ergebnisse kritisch und ordnet sie im Sachzusammenhang ein.",
     examples:["'Das stimmt, aber...'", "Vergleicht mit Vorwissen", "Hinterfragt eigene Aussagen am Stundenende"],
   },
   // FACHMETHODEN (2)
   {
-    id:"gm1", short:"Bezugstexte", area:"Fachmethoden",
+    id:"gm1", short:"Bezugstexte", area:"Fachmethoden", bogenBereich:"Fachmethoden",
     full:"Geht mit Bezugstexten, Medien und Material angemessen und sinnvoll um.",
     examples:["Zitiert korrekt aus dem Text", "Nutzt Karte/Grafik richtig", "Belegt Aussagen mit Material"],
   },
   {
-    id:"gm2", short:"Arbeitsplanung", area:"Fachmethoden",
+    id:"gm2", short:"Arbeitsplanung", area:"Fachmethoden", bogenBereich:"Fachmethoden",
     full:"Kann Arbeit sinnvoll planen, einteilen und durchführen.",
     examples:["Fängt sofort an in Gruppenarbeit", "Teilt Aufgaben sinnvoll auf", "Kommt zum Ergebnis in der Zeit"],
   },
   // SPRACHE & KOMMUNIKATION (3)
   {
-    id:"gs1", short:"Fachsprache", area:"Sprache & Komm.",
+    id:"gs1", short:"Fachsprache", area:"Sprache & Komm.", bogenBereich:"Sprache & Komm.",
     full:"Drückt sich treffend und differenziert aus und verwendet die Fachsprache richtig.",
     examples:["Nutzt Fachbegriffe korrekt", "Formuliert präzise", "Kein 'irgendwie' oder 'halt'"],
   },
   {
-    id:"gs2", short:"Sprachrichtigkeit", area:"Sprache & Komm.",
+    id:"gs2", short:"Sprachrichtigkeit", area:"Sprache & Komm.", bogenBereich:"Sprache & Komm.",
     full:"Beiträge sind sprachlich richtig und strukturiert.",
     examples:["Vollständige Sätze", "Klarer Satzbau", "Verständlich formuliert"],
   },
   {
-    id:"gs3", short:"Auf andere eingehen", area:"Sprache & Komm.",
+    id:"gs3", short:"Auf andere eingehen", area:"Sprache & Komm.", bogenBereich:"Sprache & Komm.",
     full:"Berücksichtigt Beiträge von Mitschülern; bringt eigene Gedanken ein statt nur zu wiederholen.",
     examples:["'Ich ergänze, was X gesagt hat...'", "Greift Ideen anderer auf und entwickelt sie weiter", "− wenn Gesagtes wiederholt wird, ohne einen eigenen Gedanken zu ergänzen"],
   },
@@ -183,16 +193,19 @@ const DEFAULT_STUDENTS = [];
 // Fassung Schuljahr 2026/27): PGW Jg9 wiegt die laufende Mitarbeit mit 70%,
 // alle übrigen hier geführten Kurse mit 60%. „Social Studies" ist das
 // bilinguale PGW, „History" ist Geschichte.
+// notenformat: "drittelnoten" (Sek I/II Mittelstufe) oder "punkte" (Oberstufe
+// ab Jg. 11, Notenpunkte 0–15). Bestimmt, wie Testnoten eingegeben und wie der
+// Notenvorschlag beschriftet wird.
 const COURSES_META = [
-  { name: "8a Englisch",         criteriaType: "fremdsprachen", classGroup: "8a",   mitarbeit: 60 },
-  { name: "Jg8 History",         criteriaType: "general",       classGroup: "Jg8",  mitarbeit: 60 },
-  { name: "Jg9 Social Studies",  criteriaType: "general",       classGroup: "Jg9",  mitarbeit: 70 },
-  { name: "11P Social Studies",  criteriaType: "general",       classGroup: "11P",  mitarbeit: 60 },
-  { name: "Jg10 Social Studies", criteriaType: "general",       classGroup: "Jg10", mitarbeit: 60 },
-  { name: "Jg10 History",        criteriaType: "general",       classGroup: "Jg10", mitarbeit: 60 },
-  { name: "12. Kl. Englisch",    criteriaType: "fremdsprachen", classGroup: "12Kl", mitarbeit: 60 },
-  { name: "11P WiE",             criteriaType: "general",       classGroup: "11P",  mitarbeit: 60 },
-  { name: "12. Kl. WiE",         criteriaType: "general",       classGroup: "12Kl", mitarbeit: 60 },
+  { name: "8a Englisch",         criteriaType: "fremdsprachen", classGroup: "8a",   mitarbeit: 60, notenformat: "drittelnoten" },
+  { name: "Jg8 History",         criteriaType: "general",       classGroup: "Jg8",  mitarbeit: 60, notenformat: "drittelnoten" },
+  { name: "Jg9 Social Studies",  criteriaType: "general",       classGroup: "Jg9",  mitarbeit: 70, notenformat: "drittelnoten" },
+  { name: "11P Social Studies",  criteriaType: "general",       classGroup: "11P",  mitarbeit: 60, notenformat: "punkte" },
+  { name: "Jg10 Social Studies", criteriaType: "general",       classGroup: "Jg10", mitarbeit: 60, notenformat: "drittelnoten" },
+  { name: "Jg10 History",        criteriaType: "general",       classGroup: "Jg10", mitarbeit: 60, notenformat: "drittelnoten" },
+  { name: "12. Kl. Englisch",    criteriaType: "fremdsprachen", classGroup: "12Kl", mitarbeit: 60, notenformat: "punkte" },
+  { name: "11P WiE",             criteriaType: "general",       classGroup: "11P",  mitarbeit: 60, notenformat: "punkte" },
+  { name: "12. Kl. WiE",         criteriaType: "general",       classGroup: "12Kl", mitarbeit: 60, notenformat: "punkte" },
 ];
 
 // Der Anteil, mit dem die laufende Mitarbeit in die Gesamtnote eingeht.
@@ -200,6 +213,9 @@ const COURSES_META = [
 // dann gilt der an dieser Schule übliche Regelfall.
 const getMitarbeitAnteil = (courseName) =>
   COURSES_META.find(c => c.name === courseName)?.mitarbeit ?? 60;
+
+const getNotenformat = (courseName) =>
+  COURSES_META.find(c => c.name === courseName)?.notenformat ?? "drittelnoten";
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -238,9 +254,12 @@ const migrateCourseNames = () => {
     const obs = loadData("obs_observations", null);
     if (obs) saveData("obs_observations", obs.map(o => ({ ...o, course: ren(o.course) })));
 
+    const testsData = loadData("obs_tests", null);
+    if (testsData) saveData("obs_tests", testsData.map(t => ({ ...t, course: ren(t.course) })));
+
     // homework/absences are keyed "YYYY-MM-DD_Kursname"; split at the first "_"
     // only, since course names may contain further underscores.
-    ["obs_homework", "obs_absences"].forEach(key => {
+    ["obs_homework", "obs_absences", "obs_materials"].forEach(key => {
       const val = loadData(key, null);
       if (!val) return;
       const out = {};
@@ -400,6 +419,10 @@ function App() {
   const [absences,     setAbsences]     = useState(() => loadData("obs_absences", {}));
   // Lesson topic per course and day, same "YYYY-MM-DD_Kursname" key as the two above.
   const [topics,       setTopics]       = useState(() => loadData("obs_topics", {}));
+  // Material-Kontrolle, gleiches Schlüsselschema wie homework/absences.
+  const [materials,    setMaterials]    = useState(() => loadData("obs_materials", {}));
+  // Tests: eigene Liste, {id, course, date, title, grades:{studentId: note}}.
+  const [tests,         setTests]        = useState(() => loadData("obs_tests", []));
 
   // A locked phone or an app switch discards the page, so the running session is
   // restored from storage — but only if it is from today.
@@ -415,6 +438,11 @@ function App() {
   const [todayAbsent,  setTodayAbsent]  = useState(restored?.todayAbsent  ?? []);
   const [hwActive,     setHwActive]     = useState(restored?.hwActive     ?? false);
   const [hwExceptions, setHwExceptions] = useState(restored?.hwExceptions ?? {});
+  // hwGiven: gab es an diesem Tag HA? Steuert nur, ob die HA-Spalte in der
+  // Vorbereitungs-Kontrolle erscheint — Material wird davon unabhängig jede
+  // Stunde geprüft.
+  const [hwGiven,       setHwGiven]      = useState(restored?.hwGiven ?? true);
+  const [materialExceptions, setMaterialExceptions] = useState(restored?.materialExceptions ?? {});
 
   const [noteText,      setNoteText]      = useState("");
   const [showImport,    setShowImport]    = useState(false);
@@ -439,6 +467,15 @@ function App() {
   const [backfillDate,   setBackfillDate]   = useState("");
   const [backfillAbsent, setBackfillAbsent] = useState([]);
   const [backfillTopic,  setBackfillTopic]  = useState("");
+
+  // Tests: eigener Modal, außerhalb des Stundenablaufs — am Schreibtisch
+  // eingetragen, nicht zwischen zwei Wortmeldungen.
+  const [showTests,      setShowTests]      = useState(false);
+  const [testsCourse,    setTestsCourse]    = useState(null);
+  const [testsOpenId,    setTestsOpenId]    = useState(null);
+  const [newTestOpen,    setNewTestOpen]    = useState(false);
+  const [newTestTitle,   setNewTestTitle]   = useState("");
+  const [newTestDate,    setNewTestDate]    = useState("");
   const [showBackup,    setShowBackup]    = useState(false);
   const [backupImportOK,setBackupImportOK]= useState(false);
   const [backupError,   setBackupError]  = useState("");
@@ -497,6 +534,39 @@ function App() {
     setBackfillCourse(null);
   };
 
+  // ── TESTS ────────────────────────────────────────────────────────────────
+  const openTests = (courseName) => {
+    setTestsCourse(courseName);
+    setTestsOpenId(null);
+    setNewTestOpen(false);
+    setNewTestTitle("");
+    setNewTestDate(dateKey());
+  };
+
+  const createTest = () => {
+    const id = `${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    const t = { id, course: testsCourse, date: newTestDate || dateKey(), title: newTestTitle.trim() || "Test", grades: {} };
+    setTests(prev => [...prev, t]);
+    setNewTestOpen(false);
+    setNewTestTitle("");
+    setTestsOpenId(id);
+  };
+
+  const setTestGrade = (testId, studentId, value) => {
+    setTests(prev => prev.map(t => {
+      if (t.id !== testId) return t;
+      const grades = { ...t.grades };
+      if (value === null || Number.isNaN(value)) delete grades[studentId]; else grades[studentId] = value;
+      return { ...t, grades };
+    }));
+  };
+
+  const deleteTest = (testId) => {
+    if (!window.confirm("Diesen Test wirklich löschen?")) return;
+    setTests(prev => prev.filter(t => t.id !== testId));
+    setTestsOpenId(null);
+  };
+
   // Recent distinct topics of this course, newest first. A unit usually runs over
   // several lessons, so the topic is normally one tap rather than typing.
   const recentTopics = (courseName, n = 4) => {
@@ -544,14 +614,17 @@ function App() {
   useEffect(() => saveData("obs_homework",     homework),     [homework]);
   useEffect(() => saveData("obs_absences",     absences),     [absences]);
   useEffect(() => saveData("obs_topics",       topics),       [topics]);
+  useEffect(() => saveData("obs_materials",    materials),    [materials]);
+  useEffect(() => saveData("obs_tests",        tests),        [tests]);
 
   // Keep the running session recoverable; clear it once the lesson is ended.
   useEffect(() => {
     if (!activeCourse) { try { localStorage.removeItem("obs_session"); } catch(e) {} return; }
     saveData("obs_session", {
       date: dateKey(), activeCourse, sessionPhase, todayAbsent, hwActive, hwExceptions,
+      hwGiven, materialExceptions,
     });
-  }, [activeCourse, sessionPhase, todayAbsent, hwActive, hwExceptions]);
+  }, [activeCourse, sessionPhase, todayAbsent, hwActive, hwExceptions, hwGiven, materialExceptions]);
 
   // Automatische Sicherung: löst beim Öffnen der App aus, wenn seit dem letzten
   // Auto-Backup ein zufälliges Intervall (4–7 Tage) verstrichen ist. Eigene
@@ -656,6 +729,8 @@ function App() {
     setTodayAbsent(absences[`${today}_${courseName}`] || []);
     setHwActive(false);
     setHwExceptions({});
+    setHwGiven(true);
+    setMaterialExceptions({});
     setActiveStudent(null);
     setSessionPhase("absent");
   };
@@ -687,15 +762,24 @@ function App() {
     setSessionPhase("homework");
   };
 
-  const activateHw = () => {
+  // given: gab es heute HA? Material wird unabhängig davon immer geprüft —
+  // Bücher/Hefte sind jede Stunde relevant, HA nur an manchen Tagen.
+  const activateHw = (given) => {
     const course  = courses.find(c => c.name === activeCourse);
     const present = course.students.filter(st => !todayAbsent.includes(st.id));
     // Re-entering the homework phase (e.g. after an interruption) must not wipe
     // exceptions already recorded for today.
-    const recorded = homework[`${today}_${activeCourse}`] || {};
-    const defaults = {};
-    present.forEach(st => { defaults[st.id] = recorded[st.id] || "done"; });
-    setHwExceptions(defaults);
+    const recordedHw  = homework[`${today}_${activeCourse}`]  || {};
+    const recordedMat = materials[`${today}_${activeCourse}`] || {};
+    const hwDefaults  = {};
+    const matDefaults = {};
+    present.forEach(st => {
+      hwDefaults[st.id]  = recordedHw[st.id]  || "done";
+      matDefaults[st.id] = recordedMat[st.id] || "here";
+    });
+    setHwExceptions(hwDefaults);
+    setMaterialExceptions(matDefaults);
+    setHwGiven(given);
     setHwActive(true);
   };
 
@@ -703,9 +787,14 @@ function App() {
     if (hwActive) {
       const course  = courses.find(c => c.name === activeCourse);
       const present = course.students.filter(st => !todayAbsent.includes(st.id));
-      const record  = {};
-      present.forEach(st => { record[st.id] = hwExceptions[st.id] || "done"; });
-      setHomework(prev => ({ ...prev, [`${today}_${activeCourse}`]: record }));
+      if (hwGiven) {
+        const record = {};
+        present.forEach(st => { record[st.id] = hwExceptions[st.id] || "done"; });
+        setHomework(prev => ({ ...prev, [`${today}_${activeCourse}`]: record }));
+      }
+      const matRecord = {};
+      present.forEach(st => { matRecord[st.id] = materialExceptions[st.id] || "here"; });
+      setMaterials(prev => ({ ...prev, [`${today}_${activeCourse}`]: matRecord }));
     }
     setSessionPhase("observe");
   };
@@ -842,10 +931,15 @@ function App() {
     if (showExport)         { setShowExport(false);     return true; }
     if (showImport)         { setShowImport(false);     return true; }
     if (showAttendance)     { setShowAttendance(false); return true; }
+    if (showTests) {
+      if (testsOpenId)      { setTestsOpenId(null);      return true; }
+      if (testsCourse)      { setTestsCourse(null);       return true; }
+      setShowTests(false);  return true;
+    }
     if (activeStudent)      { setActiveStudent(null);   return true; }
     if (page === "logbook") { setPage("settings");      return true; }
     return false;
-  }, [infoCrit, showExport, showImport, showAttendance, activeStudent, page]);
+  }, [infoCrit, showExport, showImport, showAttendance, showTests, testsOpenId, testsCourse, activeStudent, page]);
 
   // Wischen nach rechts als Zurück. Bewusst nicht am Bildschirmrand: in der
   // installierten PWA wäre der Rand frei, im Safari-Tab läge dort die
@@ -887,7 +981,7 @@ function App() {
   // Eine Quelle, ein Trennzeichen.
   const courseCsvBlock = (course) => {
     const criteria = getCriteria(course.name);
-    const lines = [`Name;${criteria.map(c => c.short).join(";")};HA-Quote;Fehltage;Gesamt`];
+    const lines = [`Name;${criteria.map(c => c.short).join(";")};HA-Quote;Material-Quote;Test-Ø;Fehltage;Gesamt`];
     course.students.forEach(st => {
       const obs = obsFor(course.name, st.id);
       const critSummary = criteria.map(crit => {
@@ -895,22 +989,17 @@ function App() {
         const neg = obs.filter(o => o.criterionId === crit.id && o.rating === "-").length;
         return (pos === 0 && neg === 0) ? "-" : `+${pos}/-${neg}`;
       });
-      let hwTotal = 0, hwDone = 0;
-      Object.entries(homework).forEach(([key, val]) => {
-        if (key.endsWith(`_${course.name}`)) {
-          const status = val[st.id];
-          if (status === undefined) return;  // abwesend, oder noch nicht im Kurs
-          hwTotal++;
-          if (status === "done") hwDone++;
-          else if (status === "half") hwDone += 0.5;
-        }
-      });
-      const hwPct = hwTotal > 0 ? `${Math.round((hwDone/hwTotal)*100)}%` : "-";
+      const hwQ  = getQuote(homework,  course.name, st.id, s => s==="done" ? 1 : s==="half" ? 0.5 : 0);
+      const matQ = getQuote(materials, course.name, st.id, s => s==="here" ? 1 : 0);
+      const hwPct  = hwQ.count  > 0 ? `${Math.round(hwQ.quote*100)}%`  : "-";
+      const matPct = matQ.count > 0 ? `${Math.round(matQ.quote*100)}%` : "-";
+      const testAvg = getTestAverage(course.name, st.id);
+      const testStr = testAvg ? `${Math.round(testAvg.avg*10)/10}` : "-";
       let absentCount = 0;
       Object.entries(absences).forEach(([key, ids]) => {
         if (key.endsWith(`_${course.name}`) && ids.includes(st.id)) absentCount++;
       });
-      lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${absentCount};${obs.length}`);
+      lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${matPct};${testStr};${absentCount};${obs.length}`);
     });
     return lines;
   };
@@ -931,7 +1020,7 @@ function App() {
       version: "1.0",
       exportDate: new Date().toISOString(),
       app: "ClassPulse",
-      data: { courses, observations, homework, absences, topics },
+      data: { courses, observations, homework, absences, topics, materials, tests },
     };
     const json = JSON.stringify(backup, null, 2);
     const blob = new Blob([json], { type:"application/json" });
@@ -955,7 +1044,10 @@ function App() {
         // therefore always false — the check never ran.
         if (!backup.data || backup.app !== "ClassPulse") throw new Error("Das ist keine ClassPulse-Backup-Datei");
         const { courses: c, observations: o, homework: h, absences: a } = backup.data;
-        const tp = backup.data.topics && typeof backup.data.topics === "object" ? backup.data.topics : {};
+        const tp = backup.data.topics    && typeof backup.data.topics    === "object" ? backup.data.topics    : {};
+        // materials/tests are newer than the rest — an older backup simply won't have them.
+        const mat = backup.data.materials && typeof backup.data.materials === "object" ? backup.data.materials : {};
+        const tst = Array.isArray(backup.data.tests) ? backup.data.tests : [];
         if (!Array.isArray(c) || !Array.isArray(o) ||
             !h || typeof h !== "object" || !a || typeof a !== "object")
           throw new Error("Daten unvollständig oder beschädigt");
@@ -973,11 +1065,15 @@ function App() {
         setHomework(h);
         setAbsences(a);
         setTopics(tp);
+        setMaterials(mat);
+        setTests(tst);
         saveData("obs_courses",      c);
         saveData("obs_observations", o);
         saveData("obs_homework",     h);
         saveData("obs_absences",     a);
         saveData("obs_topics",       tp);
+        saveData("obs_materials",    mat);
+        saveData("obs_tests",        tst);
         setBackupImportOK(true);
         setBackupError("");
         setTimeout(() => setBackupImportOK(false), 3000);
@@ -995,18 +1091,125 @@ function App() {
   const MIN_ENTRIES  = 6;
   const MIN_DAYS     = 3;
 
+  // Sechs Bänder, beste zuerst — dieselbe Leiter für Drittelnoten und Punkte,
+  // nur unterschiedlich beschriftet. Index in dieser Leiter ist das, was Tests,
+  // HA-Quote und Material-Quote verschieben.
+  const BANDS_NOTEN = [
+    { grade:"1–2",  label:"sehr gut / gut",              color:C.green },
+    { grade:"2–3",  label:"gut / befriedigend",          color:C.green },
+    { grade:"3",    label:"befriedigend",                color:C.amber },
+    { grade:"3–4",  label:"befriedigend / ausreichend",  color:C.amber },
+    { grade:"4–5",  label:"ausreichend / mangelhaft",    color:C.red   },
+    { grade:"5–6",  label:"mangelhaft / ungenügend",     color:C.red   },
+  ];
+  const BANDS_PUNKTE = [
+    { grade:"12–15", label:"sehr gut / gut",              color:C.green },
+    { grade:"9–11",  label:"gut / befriedigend",          color:C.green },
+    { grade:"7–8",   label:"befriedigend",                color:C.amber },
+    { grade:"5–6",   label:"befriedigend / ausreichend",  color:C.amber },
+    { grade:"2–4",   label:"ausreichend / mangelhaft",    color:C.red   },
+    { grade:"0–1",   label:"mangelhaft / ungenügend",     color:C.red   },
+  ];
+  const getBands = (courseName) => getNotenformat(courseName) === "punkte" ? BANDS_PUNKTE : BANDS_NOTEN;
+  const getScoreLabel = (courseName) => getNotenformat(courseName) === "punkte" ? "Punkte" : "Note";
+
+  // Vokabeltests/Klassenarbeiten: erst ab 2 Einträgen zählt der Schnitt.
+  const TEST_MIN_COUNT = 2;
+  // HA-Quote: erst ab 6 Kontrollen, unter 80% eine Zeile runter, nie hoch.
+  const HW_MIN_COUNT   = 6;
+  const HW_THRESHOLD   = 0.80;
+  // Material-Quote: erst ab 8 Kontrollen (Material wird jede Stunde geprüft,
+  // die Quote füllt sich schneller als bei HA), unter 85% eine Zeile runter.
+  const MAT_MIN_COUNT  = 8;
+  const MAT_THRESHOLD  = 0.85;
+
+  // homework/materials sind "YYYY-MM-DD_Kursname" → {studentId: status}.
+  // weight bildet den Status auf 0..1 ab (halb zählt halb).
+  const getQuote = (dataObj, courseName, studentId, weight) => {
+    let total = 0, sum = 0;
+    Object.entries(dataObj).forEach(([key, record]) => {
+      const i = key.indexOf("_");
+      if (i < 0 || key.slice(i + 1) !== courseName) return;
+      const status = record[studentId];
+      if (status === undefined) return;
+      total += 1;
+      sum += weight(status);
+    });
+    return { count: total, quote: total ? sum / total : null };
+  };
+
+  const getTestAverage = (courseName, studentId) => {
+    const grades = tests
+      .filter(t => t.course === courseName)
+      .map(t => t.grades?.[studentId])
+      .filter(g => typeof g === "number");
+    if (grades.length < TEST_MIN_COUNT) return null;
+    return { count: grades.length, avg: grades.reduce((a,b) => a+b, 0) / grades.length };
+  };
+
+  // delta: -1 hebt den Notenvorschlag eine Zeile (besser), +1 senkt ihn eine
+  // Zeile (schlechter), 0 bleibt neutral. status ist der Klartext fürs Profil.
+  const getTestEffect = (courseName, studentId) => {
+    const t = getTestAverage(courseName, studentId);
+    if (!t) return { delta:0, status:"noch keine Daten" };
+    const avg = Math.round(t.avg * 10) / 10;
+    if (getNotenformat(courseName) === "punkte") {
+      if (avg >= 11) return { delta:-1, status:`Ø ${avg} Punkte` };
+      if (avg <= 5)  return { delta:+1, status:`Ø ${avg} Punkte` };
+      return             { delta: 0, status:`Ø ${avg} Punkte` };
+    }
+    if (avg <= 2.0) return { delta:-1, status:`Ø ${avg}` };
+    if (avg >= 4.0) return { delta:+1, status:`Ø ${avg}` };
+    return             { delta: 0, status:`Ø ${avg}` };
+  };
+
+  const getHwEffect = (courseName, studentId) => {
+    const q = getQuote(homework, courseName, studentId, s => s==="done" ? 1 : s==="half" ? 0.5 : 0);
+    if (q.count < HW_MIN_COUNT) return { delta:0, status:"noch keine Daten" };
+    return { delta: q.quote < HW_THRESHOLD ? +1 : 0, status:`${Math.round(q.quote*100)}%` };
+  };
+
+  const getMaterialEffect = (courseName, studentId) => {
+    const q = getQuote(materials, courseName, studentId, s => s==="here" ? 1 : 0);
+    if (q.count < MAT_MIN_COUNT) return { delta:0, status:"noch keine Daten" };
+    return { delta: q.quote < MAT_THRESHOLD ? +1 : 0, status:`${Math.round(q.quote*100)}%` };
+  };
+
+  // Alle drei Effekte werden addiert, dann erst auf ±1 Zeile insgesamt
+  // gedeckelt — sonst würde ein einzelnes Problem (z.B. schwache Tests UND
+  // niedrige HA-Quote aus derselben mangelnden Vorbereitung) doppelt zählen.
+  const getGradeCorrection = (courseName, studentId) => {
+    const test = getTestEffect(courseName, studentId);
+    const hw   = getHwEffect(courseName, studentId);
+    const mat  = getMaterialEffect(courseName, studentId);
+    const net  = Math.max(-1, Math.min(1, test.delta + hw.delta + mat.delta));
+    return { test, hw, mat, net };
+  };
+
   const getGradeProposal = (courseName, studentId) => {
     const obs = obsFor(courseName, studentId).filter(isRating);
     const days = new Set(obs.map(o => o.date)).size;
     if (obs.length < MIN_ENTRIES || days < MIN_DAYS) return null;
     const pos = obs.filter(o => o.rating === "+").length;
     const ratio = pos / obs.length;
-    if (ratio >= 0.80) return { grade:"1–2", label:"sehr gut / gut",         color:C.green  };
-    if (ratio >= 0.60) return { grade:"2–3", label:"gut / befriedigend",     color:C.green  };
-    if (ratio >= 0.45) return { grade:"3",   label:"befriedigend",           color:C.amber  };
-    if (ratio >= 0.30) return { grade:"3–4", label:"befriedigend / ausreichend", color:C.amber };
-    if (ratio >= 0.15) return { grade:"4–5", label:"ausreichend / mangelhaft",   color:C.red   };
-    return               { grade:"5–6", label:"mangelhaft / ungenügend",    color:C.red   };
+    let baseIndex;
+    if      (ratio >= 0.80) baseIndex = 0;
+    else if (ratio >= 0.60) baseIndex = 1;
+    else if (ratio >= 0.45) baseIndex = 2;
+    else if (ratio >= 0.30) baseIndex = 3;
+    else if (ratio >= 0.15) baseIndex = 4;
+    else                    baseIndex = 5;
+
+    const bands      = getBands(courseName);
+    const correction = getGradeCorrection(courseName, studentId);
+    const finalIndex = Math.max(0, Math.min(5, baseIndex + correction.net));
+
+    return {
+      ...bands[finalIndex],
+      base: bands[baseIndex],
+      correction,
+      corrected: finalIndex !== baseIndex,
+    };
   };
 
   const getObsProgress = (courseName, studentId) => {
@@ -1087,7 +1290,7 @@ function App() {
   // HA-Kontrolle nicht mehr nachholen. Erledigte Schritte führen jetzt zurück.
   const PHASES = [
     { id:"absent",   label:"Fehlende" },
-    { id:"homework", label:"Hausaufg." },
+    { id:"homework", label:"Vorbereit." },
     { id:"observe",  label:"Beobachten" },
   ];
 
@@ -1198,19 +1401,20 @@ function App() {
     // explanation — undiagnosable mid-lesson. Say what happened instead.
     if (!course) return renderMissingCourse();
     const present = course.students.filter(st => !todayAbsent.includes(st.id));
-    const exCount = Object.values(hwExceptions).filter(v => v !== "done").length;
+    const hwExCount  = Object.values(hwExceptions).filter(v => v !== "done").length;
+    const matExCount = Object.values(materialExceptions).filter(v => v !== "here").length;
 
     return (
       <div style={S.page}>
         <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
-        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 10px" }}>Hausaufgaben</h2>
+        <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 10px" }}>Vorbereitung</h2>
         {renderPhaseSteps()}
 
         {!hwActive ? (
           <>
             <p style={{ fontSize:15, color:C.textDim, marginBottom:16 }}>Gab es Hausaufgaben auf?</p>
-            <button style={S.btn("green")} onClick={activateHw}>✓ Ja — HA kontrollieren</button>
-            <button style={S.btn("ghost")} onClick={() => setSessionPhase("observe")}>Nein — direkt zum Beobachten</button>
+            <button style={S.btn("green")} onClick={() => activateHw(true)}>✓ Ja — HA & Material kontrollieren</button>
+            <button style={S.btn("ghost")} onClick={() => activateHw(false)}>Keine HA — nur Material prüfen</button>
           </>
         ) : (
           <>
@@ -1218,7 +1422,9 @@ function App() {
               Alle auf ✓ gesetzt — nur Ausnahmen antippen.
             </p>
             <p style={{ fontSize:15, color:C.textMuted, marginBottom:12 }}>
-              {present.length} anwesend · {exCount} nicht/teilweise
+              {present.length} anwesend
+              {hwGiven && ` · ${hwExCount} HA nicht/teilweise`}
+              {` · ${matExCount} ohne Material`}
             </p>
 
             {/* Der gute Default („alles auf ✓") sparte das Tippen, nicht das Suchen. */}
@@ -1244,10 +1450,13 @@ function App() {
               .filter(st => {
                 const q = hwFilter.trim().toLowerCase();
                 if (!q) return true;
-                return st.name.toLowerCase().includes(q) || (hwExceptions[st.id] || "done") !== "done";
+                return st.name.toLowerCase().includes(q) ||
+                  (hwGiven && (hwExceptions[st.id] || "done") !== "done") ||
+                  (materialExceptions[st.id] || "here") !== "here";
               })
               .map(st => {
               const status = hwExceptions[st.id] || "done";
+              const matStatus = materialExceptions[st.id] || "here";
               const stName = st.name.split(" ")[0];
               const setStatus = (newStatus, label) => {
                 const prevStatus = status;
@@ -1257,16 +1466,33 @@ function App() {
                   () => setHwExceptions(p => ({ ...p, [st.id]: prevStatus }))
                 );
               };
+              const toggleMaterial = () => {
+                const next = matStatus === "here" ? "missing" : "here";
+                setMaterialExceptions(p => ({ ...p, [st.id]: next }));
+                registerUndo(
+                  `${stName}: Material ${next === "here" ? "da" : "fehlt"}`,
+                  () => setMaterialExceptions(p => ({ ...p, [st.id]: matStatus }))
+                );
+              };
               return (
-                <div key={st.id} style={{ ...S.row, borderColor:status==="not"?C.red:status==="half"?C.amber:C.border, background:status==="not"?C.redSoft:status==="half"?C.amberSoft:C.card }}>
+                <div key={st.id} style={{ ...S.row, borderColor:status==="not"||matStatus==="missing"?C.red:status==="half"?C.amber:C.border, background:status==="not"?C.redSoft:status==="half"?C.amberSoft:C.card }}>
                   <span style={{ fontSize:15, fontWeight:500 }}>{st.name}</span>
-                  <div style={{ display:"flex", gap:4 }}>
-                    <button style={S.btnSm(status==="done"?"green":"ghost")}
-                      onClick={() => setStatus("done", "✓")}>✓</button>
-                    <button style={S.btnSm(status==="half"?"amber":"ghost")}
-                      onClick={() => setStatus(status==="half"?"done":"half", status==="half"?"✓":"½")}>½</button>
-                    <button style={S.btnSm(status==="not"?"red":"ghost")}
-                      onClick={() => setStatus(status==="not"?"done":"not", status==="not"?"✓":"✗")}>✗</button>
+                  <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+                    {hwGiven && (
+                      <div style={{ display:"flex", gap:4 }}>
+                        <button style={S.btnSm(status==="done"?"green":"ghost")}
+                          onClick={() => setStatus("done", "✓")}>✓</button>
+                        <button style={S.btnSm(status==="half"?"amber":"ghost")}
+                          onClick={() => setStatus(status==="half"?"done":"half", status==="half"?"✓":"½")}>½</button>
+                        <button style={S.btnSm(status==="not"?"red":"ghost")}
+                          onClick={() => setStatus(status==="not"?"done":"not", status==="not"?"✓":"✗")}>✗</button>
+                      </div>
+                    )}
+                    <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+                      <span style={{ fontSize:11, color:C.textMuted }}>Mat.</span>
+                      <button style={S.btnSm(matStatus==="missing"?"red":"ghost")}
+                        onClick={toggleMaterial}>{matStatus==="missing" ? "✗" : "✓"}</button>
+                    </div>
                   </div>
                 </div>
               );
@@ -1484,7 +1710,7 @@ function App() {
               <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:10, padding:"12px 14px", marginTop:20 }}>
                 <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:6 }}>NOTENVORSCHLAG</div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                  <span style={{ fontSize:17, fontWeight:700, color:grade.color }}>Note {grade.grade}</span>
+                  <span style={{ fontSize:17, fontWeight:700, color:grade.color }}>{getScoreLabel(activeCourse)} {grade.grade}</span>
                   <span style={{ fontSize:13, color:C.textDim }}>{grade.label}</span>
                 </div>
                 {critTendencies.map(t => (
@@ -1493,6 +1719,35 @@ function App() {
                     <span style={{ fontSize:13, fontWeight:600, color:t.color }}>{t.label}</span>
                   </div>
                 ))}
+                {/* Korrektur nur zeigen, wenn mindestens eine der drei Quellen genug
+                    Daten hat — sonst würde "noch keine Daten" jedes Mal aufblähen. */}
+                {(() => {
+                  const c = grade.correction;
+                  const items = [
+                    { key:"test", label:"Tests",          eff:c.test },
+                    { key:"hw",   label:"HA-Quote",        eff:c.hw   },
+                    { key:"mat",  label:"Material-Quote",  eff:c.mat  },
+                  ].filter(it => it.eff.status !== "noch keine Daten");
+                  if (items.length === 0) return null;
+                  const effectLabel = d => d < 0 ? "hebt eine Zeile" : d > 0 ? "senkt eine Zeile" : "neutral";
+                  const rawSum = c.test.delta + c.hw.delta + c.mat.delta;
+                  return (
+                    <div style={{ marginTop:8, paddingTop:6, borderTop:`1px solid ${C.border}` }}>
+                      <div style={{ fontSize:12, color:C.textMuted, marginBottom:3, letterSpacing:"0.06em" }}>KORREKTUR</div>
+                      {items.map(it => (
+                        <div key={it.key} style={{ display:"flex", justifyContent:"space-between", paddingTop:2 }}>
+                          <span style={{ fontSize:13, color:C.textDim }}>{it.label}</span>
+                          <span style={{ fontSize:13, color:C.textDim }}>{it.eff.status} · {effectLabel(it.eff.delta)}</span>
+                        </div>
+                      ))}
+                      <div style={{ fontSize:13, fontWeight:600, color:grade.corrected ? grade.color : C.textDim, marginTop:4 }}>
+                        {grade.corrected
+                          ? `Basis ${grade.base.grade} → ${grade.grade}${rawSum !== c.net ? " (gedeckelt auf 1 Zeile)" : ""}`
+                          : "Keine Korrektur wirksam"}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div style={{ fontSize:13, color:C.textMuted, marginTop:8, paddingTop:6, borderTop:`1px solid ${C.border}` }}>
                   {prog.count} Einträge / {prog.days} Tage · Pädagogische Einschätzung entscheidet.
                 </div>
@@ -1999,7 +2254,7 @@ function App() {
                       {grade ? (
                         gradesVisible ? (
                           <span style={{ fontSize:13, fontWeight:700, color:grade.color, minWidth:52, textAlign:"right" }}>
-                            Note {grade.grade}
+                            {getScoreLabel(course.name)} {grade.grade}
                           </span>
                         ) : (
                           <span style={{ fontSize:13, fontWeight:700, color:C.textMuted, minWidth:52, textAlign:"right", letterSpacing:"0.1em" }}>
@@ -2240,6 +2495,10 @@ function App() {
         }}>
         <Icon name="users" size={16} color={C.textDim} /> Stunde nachtragen (z.B. bei Vertretung)
       </button>
+      <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginTop:8 }}
+        onClick={() => { setShowTests(true); setTestsCourse(null); }}>
+        <Icon name="chart" size={16} color={C.textDim} /> Tests (Vokabeltests, Klassenarbeiten…)
+      </button>
 
       <div style={S.sectionLbl}>CSV / PDF Export</div>
       <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
@@ -2252,6 +2511,7 @@ function App() {
         onClick={() => {
           if (window.confirm("Wirklich ALLE Daten löschen? Dies kann nicht rückgängig gemacht werden.")) {
             ["obs_courses","obs_observations","obs_homework","obs_absences","obs_topics",
+             "obs_materials","obs_tests",
              "obs_session","obs_lastAutoBackup","obs_nextAutoBackupDays"].forEach(k => localStorage.removeItem(k));
             window.location.reload();
           }
@@ -2263,12 +2523,13 @@ function App() {
 
       <div style={{ ...S.sectionLbl, marginTop:24 }}>Info</div>
       <div style={{ fontSize:13, color:C.textDim, lineHeight:"1.9", background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
-        <strong style={{ color:C.text }}>ClassPulse — Participation Tracker v1.3</strong><br/>
+        <strong style={{ color:C.text }}>ClassPulse — Participation Tracker v1.4</strong><br/>
         Daten lokal auf diesem Gerät (localStorage).<br/>
         Kein Server · kein Login · kein Tracking.<br/><br/>
         <strong style={{ color:C.text }}>Bewertungsbögen:</strong><br/>
-        Englisch (8a, 12. Kl.) → Fremdsprachen-Bogen (8 Kriterien)<br/>
-        Alle anderen Fächer → Allg. Grootmoor-Bogen (8 Kriterien, 3/2/3)<br/><br/>
+        Englisch (8a, 12. Kl.) → Fremdsprachen-Bogen (9 Kriterien, davon 8 auf dem Grootmoor-Bogen)<br/>
+        Alle anderen Fächer → Allg. Grootmoor-Bogen (8 Kriterien, 3/2/3)<br/>
+        Vokabeltests, HA-Quote, Material-Quote: eigene Korrektur auf den Notenvorschlag (max. ±1 Notenstufe)<br/><br/>
         <strong style={{ color:C.text }}>Notenvorschlag:</strong><br/>
         Ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} verschiedenen Tagen pro Schüler.<br/>
         Pädagogische Einschätzung der Lehrkraft entscheidet.<br/><br/>
@@ -2442,6 +2703,121 @@ function App() {
     );
   };
 
+  const renderTestsModal = () => {
+    // Schritt 1: Kurs wählen.
+    if (!testsCourse) {
+      return (
+        <div style={S.modal} onClick={() => setShowTests(false)}>
+          <div style={S.modalInner} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>Tests</h3>
+            <p style={{ fontSize:15, color:C.textDim, marginBottom:14 }}>Für welchen Kurs?</p>
+            {COURSES_META.filter(c => c.criteriaType !== "none").map((c,i) => (
+              <button key={i} style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer", WebkitAppearance:"none" }}
+                onClick={() => openTests(c.name)}>
+                <span style={{ ...S.courseTitle, color:C.text }}>{c.name}</span>
+                <span style={{ fontSize:13, color:C.textDim }}>{getScoreLabel(c.name)}</span>
+              </button>
+            ))}
+            <button style={{ ...S.btn("ghost"), marginTop:8 }} onClick={() => setShowTests(false)}>Abbrechen</button>
+          </div>
+        </div>
+      );
+    }
+
+    const course = courses.find(c => c.name === testsCourse);
+    if (!course) return null;
+    const courseTests = tests.filter(t => t.course === testsCourse).slice().sort((a,b) => b.date.localeCompare(a.date));
+    const openTest = testsOpenId ? courseTests.find(t => t.id === testsOpenId) : null;
+    const punkte = getNotenformat(testsCourse) === "punkte";
+
+    // Schritt 3: Noten für einen einzelnen Test.
+    if (openTest) {
+      return (
+        <div style={S.modal} onClick={() => setShowTests(false)}>
+          <div style={S.modalInner} onClick={e => e.stopPropagation()}>
+            <button style={{ background:"none", border:"none", color:C.textDim, cursor:"pointer", fontSize:13, padding:0, marginBottom:8 }}
+              onClick={() => setTestsOpenId(null)}>← Andere Tests</button>
+            <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>{openTest.title}</h3>
+            <p style={{ fontSize:15, color:C.textDim, marginBottom:14 }}>
+              {testsCourse} · {fmtLogDate(openTest.date)} · {punkte ? "0–15 Punkte" : "Note als Dezimalzahl, z.B. 2.3 für 2−"}
+            </p>
+            {course.students.map(st => (
+              <div key={st.id} style={S.row}>
+                <span style={{ fontSize:15, fontWeight:500 }}>{st.name}</span>
+                <input type="number" inputMode="decimal"
+                  step={punkte ? 1 : 0.1} min={punkte ? 0 : 1} max={punkte ? 15 : 6}
+                  value={openTest.grades[st.id] ?? ""}
+                  onChange={e => {
+                    const raw = e.target.value;
+                    setTestGrade(openTest.id, st.id, raw === "" ? null : parseFloat(raw));
+                  }}
+                  placeholder="—"
+                  style={{ width:64, padding:"10px 8px", background:C.surface, border:`1px solid ${C.border}`,
+                           borderRadius:8, color:C.text, fontSize:15, outline:"none", textAlign:"center" }} />
+              </div>
+            ))}
+            <button style={{ ...S.btn("ghost"), borderColor:C.red, color:C.red, marginTop:8 }}
+              onClick={() => deleteTest(openTest.id)}>Test löschen</button>
+            <p style={{ fontSize:13, color:C.textMuted, textAlign:"center", marginTop:6 }}>Wird automatisch gespeichert.</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Schritt 2: Testliste des Kurses + neuer Test.
+    return (
+      <div style={S.modal} onClick={() => setShowTests(false)}>
+        <div style={S.modalInner} onClick={e => e.stopPropagation()}>
+          <button style={{ background:"none", border:"none", color:C.textDim, cursor:"pointer", fontSize:13, padding:0, marginBottom:8 }}
+            onClick={() => setTestsCourse(null)}>← Anderer Kurs</button>
+          <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>{testsCourse}</h3>
+          <p style={{ fontSize:15, color:C.textDim, marginBottom:14 }}>
+            Zählt nicht als Kriterium — eigene, gedeckelte Korrektur auf den Notenvorschlag ab {TEST_MIN_COUNT} Tests.
+          </p>
+
+          {!newTestOpen ? (
+            <button style={{ ...S.btn("green"), marginTop:0 }}
+              onClick={() => { setNewTestOpen(true); setNewTestDate(dateKey()); }}>+ Neuer Test</button>
+          ) : (
+            <div style={{ ...S.critCard, marginBottom:10 }}>
+              <input type="date" value={newTestDate} max={dateKey()}
+                onChange={e => setNewTestDate(e.target.value)}
+                style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
+                         borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:8, boxSizing:"border-box" }} />
+              <input value={newTestTitle} onChange={e => setNewTestTitle(e.target.value)}
+                placeholder="Titel (z.B. Vokabeltest Unit 3)" {...inputFocus}
+                style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
+                         borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:8, boxSizing:"border-box" }} />
+              <button style={S.btn("primary")} onClick={createTest}>Anlegen & Noten eintragen</button>
+            </div>
+          )}
+
+          {courseTests.length === 0 ? (
+            <p style={{ fontSize:15, color:C.textMuted, marginTop:14 }}>Noch keine Tests erfasst.</p>
+          ) : (
+            <>
+              <div style={S.sectionLbl}>Bisherige Tests</div>
+              {courseTests.map(t => {
+                const gradeCount = Object.keys(t.grades).length;
+                return (
+                  <button key={t.id} style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer", WebkitAppearance:"none" }}
+                    onClick={() => setTestsOpenId(t.id)}>
+                    <span>
+                      <span style={{ fontSize:15, fontWeight:600, color:C.text, display:"block" }}>{t.title}</span>
+                      <span style={{ fontSize:13, color:C.textDim }}>{fmtLogDate(t.date)}</span>
+                    </span>
+                    <span style={{ fontSize:13, color:C.textDim }}>{gradeCount}/{course.students.length}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+          <button style={{ ...S.btn("ghost"), marginTop:8 }} onClick={() => setShowTests(false)}>Fertig</button>
+        </div>
+      </div>
+    );
+  };
+
   // ── SESSION ROUTER ───────────────────────────────────────────────────────
 
   const renderSession = () => {
@@ -2488,6 +2864,9 @@ function App() {
 
       {/* Stunde nachtragen (vergangener Tag, z.B. Vertretung) */}
       {showBackfill && renderBackfillModal()}
+
+      {/* Tests: Vokabeltests/Klassenarbeiten, außerhalb des Stundenablaufs */}
+      {showTests && renderTestsModal()}
 
       {/* Export modal */}
       {showExport && (
