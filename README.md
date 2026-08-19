@@ -25,7 +25,7 @@ Gymnasium Grootmoor Hamburg · Philipp Tran-Huynh
 | Datei | Zweck |
 |-------|-------|
 | `classpulse_export.py` | Generiert Klassenliste + Schüler-Detailseiten als PDF aus JSON-Backup |
-| `classpulse_infosheet.py` | Generiert ein Transparenz-Blatt pro Kurs für den Schuljahresbeginn (EN/DE, hochladbar/präsentierbar) |
+| `classpulse_infosheet.py` | Generiert ein einziges, kursunabhängiges Transparenz-Blatt für den Schuljahresbeginn (EN/DE) — Gewichtung und Notenskala werden mündlich dazu gesagt |
 | `CLASSPULSE_PDF_RULES.md` | Design-Dokumentation: Farben, Fonts, Layout-Regeln, Kriterien-Definitionen |
 
 ---
