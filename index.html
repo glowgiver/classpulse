@@ -420,6 +420,14 @@ function App() {
   // Standardmäßig verdeckt; ein Tipp deckt sie für 30 Sekunden auf.
   const [gradesVisible, setGradesVisible] = useState(false);
   const [showAttendance,setShowAttendance]= useState(false);
+  // Nachtragen: eine Vertretung gibt die Anwesenheitsliste oft erst nach der
+  // Stunde weiter — Anwesenheit und Thema müssen dann für einen vergangenen
+  // Tag nachtragbar sein, ohne die laufende Live-Session anzufassen.
+  const [showBackfill,   setShowBackfill]   = useState(false);
+  const [backfillCourse, setBackfillCourse] = useState(null);
+  const [backfillDate,   setBackfillDate]   = useState("");
+  const [backfillAbsent, setBackfillAbsent] = useState([]);
+  const [backfillTopic,  setBackfillTopic]  = useState("");
   const [showBackup,    setShowBackup]    = useState(false);
   const [backupImportOK,setBackupImportOK]= useState(false);
   const [backupError,   setBackupError]  = useState("");
@@ -452,6 +460,30 @@ function App() {
       if (value.trim()) next[key] = value.trim(); else delete next[key];
       return next;
     });
+  };
+
+  const openBackfill = (courseName, date) => {
+    const key = `${date}_${courseName}`;
+    setBackfillCourse(courseName);
+    setBackfillDate(date);
+    setBackfillAbsent(absences[key] || []);
+    setBackfillTopic(topics[key] || "");
+  };
+
+  const toggleBackfillAbsent = (studentId) => {
+    setBackfillAbsent(prev => prev.includes(studentId) ? prev.filter(i => i !== studentId) : [...prev, studentId]);
+  };
+
+  const saveBackfill = () => {
+    const key = `${backfillDate}_${backfillCourse}`;
+    setAbsences(prev => ({ ...prev, [key]: backfillAbsent }));
+    setTopics(prev => {
+      const next = { ...prev };
+      if (backfillTopic.trim()) next[key] = backfillTopic.trim(); else delete next[key];
+      return next;
+    });
+    setShowBackfill(false);
+    setBackfillCourse(null);
   };
 
   // Recent distinct topics of this course, newest first. A unit usually runs over
@@ -2178,6 +2210,16 @@ function App() {
         onClick={() => setPage("logbook")}>
         <Icon name="chart" size={16} color={C.textDim} /> Stunden-Übersicht (Thema · Fehlende · HA)
       </button>
+      <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginTop:8 }}
+        onClick={() => {
+          setShowBackfill(true);
+          setBackfillCourse(null);
+          setBackfillDate(dateKey(new Date(Date.now() - 86400000)));
+          setBackfillAbsent([]);
+          setBackfillTopic("");
+        }}>
+        <Icon name="users" size={16} color={C.textDim} /> Stunde nachtragen (z.B. bei Vertretung)
+      </button>
 
       <div style={S.sectionLbl}>CSV / PDF Export</div>
       <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
@@ -2298,6 +2340,79 @@ function App() {
     );
   };
 
+  // ── RENDER: STUNDE NACHTRAGEN ────────────────────────────────────────────
+  // Eigenständig von activeCourse/sessionPhase, damit ein Nachtrag die laufende
+  // Live-Session nicht stört und für jeden vergangenen Tag möglich ist.
+
+  const renderBackfillModal = () => {
+    const todayKey = dateKey();
+
+    // Schritt 1: Tag und Kurs wählen.
+    if (!backfillCourse) {
+      return (
+        <div style={S.modal} onClick={() => setShowBackfill(false)}>
+          <div style={S.modalInner} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>Stunde nachtragen</h3>
+            <p style={{ fontSize:15, color:C.textDim, marginBottom:14 }}>
+              Für welchen Tag und welchen Kurs?
+            </p>
+            <input type="date" value={backfillDate} max={todayKey}
+              onChange={e => setBackfillDate(e.target.value)}
+              style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
+                       borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:14,
+                       boxSizing:"border-box" }} />
+            {COURSES_META.filter(c => c.criteriaType !== "none").map((c,i) => (
+              <button key={i} style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer", WebkitAppearance:"none" }}
+                onClick={() => openBackfill(c.name, backfillDate)}>
+                <span style={{ ...S.courseTitle, color:C.text }}>{c.name}</span>
+              </button>
+            ))}
+            <button style={{ ...S.btn("ghost"), marginTop:8 }} onClick={() => setShowBackfill(false)}>Abbrechen</button>
+          </div>
+        </div>
+      );
+    }
+
+    // Schritt 2: Anwesenheit und Thema für den gewählten Tag/Kurs.
+    const course = courses.find(c => c.name === backfillCourse);
+    if (!course) return null;
+    return (
+      <div style={S.modal} onClick={() => setShowBackfill(false)}>
+        <div style={S.modalInner} onClick={e => e.stopPropagation()}>
+          <button style={{ background:"none", border:"none", color:C.textDim, cursor:"pointer", fontSize:13, padding:0, marginBottom:8 }}
+            onClick={() => setBackfillCourse(null)}>← Anderer Tag/Kurs</button>
+          <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>{backfillCourse}</h3>
+          <p style={{ fontSize:15, color:C.textDim, marginBottom:14 }}>
+            {fmtLogDate(backfillDate)} · Antippen = fehlt
+          </p>
+
+          <input value={backfillTopic} onChange={e => setBackfillTopic(e.target.value)}
+            placeholder="Thema dieser Stunde (optional)" {...inputFocus}
+            style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
+                     borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:14,
+                     boxSizing:"border-box" }} />
+
+          {course.students.map(st => {
+            const absent = backfillAbsent.includes(st.id);
+            return (
+              <button key={st.id} onClick={() => toggleBackfillAbsent(st.id)}
+                style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer",
+                         WebkitAppearance:"none",
+                         background: absent ? C.redSoft : C.card,
+                         borderColor: absent ? C.red : C.border }}>
+                <span style={{ fontSize:15, fontWeight:500, color: absent ? C.red : C.text }}>{st.name}</span>
+                <span style={{ fontSize:13, fontWeight:700, color: absent ? C.red : C.textDim }}>
+                  {absent ? "fehlt" : "da"}
+                </span>
+              </button>
+            );
+          })}
+          <button style={S.btn("primary")} onClick={saveBackfill}>Speichern</button>
+        </div>
+      </div>
+    );
+  };
+
   // ── SESSION ROUTER ───────────────────────────────────────────────────────
 
   const renderSession = () => {
@@ -2339,8 +2454,11 @@ function App() {
       {/* Import modal */}
       {showImport && renderImportModal()}
 
-      {/* Anwesenheit nachtragen */}
+      {/* Anwesenheit nachtragen (laufende Stunde) */}
       {showAttendance && activeCourse && renderAttendanceModal()}
+
+      {/* Stunde nachtragen (vergangener Tag, z.B. Vertretung) */}
+      {showBackfill && renderBackfillModal()}
 
       {/* Export modal */}
       {showExport && (
