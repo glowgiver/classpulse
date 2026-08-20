@@ -259,7 +259,7 @@ const migrateCourseNames = () => {
 
     // homework/absences are keyed "YYYY-MM-DD_Kursname"; split at the first "_"
     // only, since course names may contain further underscores.
-    ["obs_homework", "obs_absences", "obs_materials"].forEach(key => {
+    ["obs_homework", "obs_absences", "obs_materials", "obs_homeworkAssigned"].forEach(key => {
       const val = loadData(key, null);
       if (!val) return;
       const out = {};
@@ -419,6 +419,10 @@ function App() {
   const [absences,     setAbsences]     = useState(() => loadData("obs_absences", {}));
   // Lesson topic per course and day, same "YYYY-MM-DD_Kursname" key as the two above.
   const [topics,       setTopics]       = useState(() => loadData("obs_topics", {}));
+  // Was für die nächste Stunde aufgegeben wurde — nicht zu verwechseln mit
+  // `homework`, das die Kontrolle der bereits erledigten HA speichert. Gleiches
+  // Schlüsselschema, gleiches Editier-Muster wie `topics`.
+  const [homeworkAssigned, setHomeworkAssigned] = useState(() => loadData("obs_homeworkAssigned", {}));
   // Material-Kontrolle, gleiches Schlüsselschema wie homework/absences.
   const [materials,    setMaterials]    = useState(() => loadData("obs_materials", {}));
   // Tests: eigene Liste, {id, course, date, title, grades:{studentId: note}}.
@@ -508,6 +512,33 @@ function App() {
       if (value.trim()) next[key] = value.trim(); else delete next[key];
       return next;
     });
+  };
+
+  const [hwNextEditing, setHwNextEditing] = useState(false);
+  const [hwNextDraft,   setHwNextDraft]   = useState("");
+
+  const setHomeworkAssignedFor = (courseName, value) => {
+    const key = `${dateKey()}_${courseName}`;
+    setHomeworkAssigned(prev => {
+      const next = { ...prev };
+      if (value.trim()) next[key] = value.trim(); else delete next[key];
+      return next;
+    });
+  };
+
+  // Die zuletzt aufgegebene HA für diesen Kurs — unabhängig vom heutigen
+  // Datum, damit sie zu Beginn der nächsten Stunde noch auffindbar ist.
+  const getLastAssignedHomework = (courseName) => {
+    const today_ = dateKey();
+    const entries = Object.entries(homeworkAssigned)
+      .filter(([k, v]) => {
+        const i = k.indexOf("_");
+        return v && v.trim() && i >= 0 && k.slice(i + 1) === courseName && k.slice(0, i) !== today_;
+      })
+      .sort((a, b) => a[0] < b[0] ? 1 : -1);
+    if (!entries.length) return null;
+    const [key, text] = entries[0];
+    return { date: key.slice(0, key.indexOf("_")), text };
   };
 
   const openBackfill = (courseName, date) => {
@@ -614,6 +645,7 @@ function App() {
   useEffect(() => saveData("obs_homework",     homework),     [homework]);
   useEffect(() => saveData("obs_absences",     absences),     [absences]);
   useEffect(() => saveData("obs_topics",       topics),       [topics]);
+  useEffect(() => saveData("obs_homeworkAssigned", homeworkAssigned), [homeworkAssigned]);
   useEffect(() => saveData("obs_materials",    materials),    [materials]);
   useEffect(() => saveData("obs_tests",        tests),        [tests]);
 
@@ -1020,7 +1052,7 @@ function App() {
       version: "1.0",
       exportDate: new Date().toISOString(),
       app: "ClassPulse",
-      data: { courses, observations, homework, absences, topics, materials, tests },
+      data: { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned },
     };
     const json = JSON.stringify(backup, null, 2);
     const blob = new Blob([json], { type:"application/json" });
@@ -1048,6 +1080,7 @@ function App() {
         // materials/tests are newer than the rest — an older backup simply won't have them.
         const mat = backup.data.materials && typeof backup.data.materials === "object" ? backup.data.materials : {};
         const tst = Array.isArray(backup.data.tests) ? backup.data.tests : [];
+        const hwa = backup.data.homeworkAssigned && typeof backup.data.homeworkAssigned === "object" ? backup.data.homeworkAssigned : {};
         if (!Array.isArray(c) || !Array.isArray(o) ||
             !h || typeof h !== "object" || !a || typeof a !== "object")
           throw new Error("Daten unvollständig oder beschädigt");
@@ -1067,6 +1100,7 @@ function App() {
         setTopics(tp);
         setMaterials(mat);
         setTests(tst);
+        setHomeworkAssigned(hwa);
         saveData("obs_courses",      c);
         saveData("obs_observations", o);
         saveData("obs_homework",     h);
@@ -1074,6 +1108,7 @@ function App() {
         saveData("obs_topics",       tp);
         saveData("obs_materials",    mat);
         saveData("obs_tests",        tst);
+        saveData("obs_homeworkAssigned", hwa);
         setBackupImportOK(true);
         setBackupError("");
         setTimeout(() => setBackupImportOK(false), 3000);
@@ -1403,12 +1438,25 @@ function App() {
     const present = course.students.filter(st => !todayAbsent.includes(st.id));
     const hwExCount  = Object.values(hwExceptions).filter(v => v !== "done").length;
     const matExCount = Object.values(materialExceptions).filter(v => v !== "here").length;
+    const lastHw = getLastAssignedHomework(activeCourse);
 
     return (
       <div style={S.page}>
         <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
         <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 10px" }}>Vorbereitung</h2>
         {renderPhaseSteps()}
+
+        {/* Was letztes Mal aufgegeben wurde — direkt über der Frage, die es
+            beantwortet, statt an einer Stelle, die man erst suchen muss. */}
+        {lastHw && (
+          <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:10,
+                        padding:"12px 14px", marginBottom:14 }}>
+            <div style={{ fontSize:12, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:2 }}>
+              LETZTE HA (vom {fmtLogDate(lastHw.date)})
+            </div>
+            <div style={{ fontSize:15, color:C.text }}>{lastHw.text}</div>
+          </div>
+        )}
 
         {!hwActive ? (
           <>
@@ -1800,6 +1848,7 @@ function App() {
     if (criteria.length === 0) {
       const tKey  = `${today}_${activeCourse}`;
       const saved = topics[tKey] || "";
+      const hwSaved = homeworkAssigned[tKey] || "";
       return (
         <div style={S.page}>
           <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
@@ -1827,8 +1876,31 @@ function App() {
               style={{ fontSize:15, color: saved ? C.text : C.textMuted, cursor:"pointer",
                        width:"100%", textAlign:"left", minHeight:44, background:"none",
                        WebkitAppearance:"none",
-                       padding:"12px", borderRadius:8, border:`1px dashed ${C.border}` }}>
+                       padding:"12px", marginBottom:8, borderRadius:8, border:`1px dashed ${C.border}` }}>
               {saved ? <><span style={{ color:C.textDim }}>Thema: </span>{saved}</> : "+ Thema fürs Klassenbuch"}
+            </button>
+          )}
+
+          {hwNextEditing ? (
+            <div style={{ display:"flex", gap:6, marginBottom:8 }}>
+              <input autoFocus value={hwNextDraft}
+                onChange={e => setHwNextDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { setHomeworkAssignedFor(activeCourse, hwNextDraft); setHwNextEditing(false); }
+                                  if (e.key === "Escape") setHwNextEditing(false); }}
+                placeholder="HA für nächstes Mal" {...inputFocus}
+                style={{ flex:1, padding:"12px 11px", background:C.surface, border:`1px solid ${C.accent}`,
+                         borderRadius:8, color:C.text, fontSize:15, outline:"none" }} />
+              <button style={S.btnSm("primary")}
+                onClick={() => { setHomeworkAssignedFor(activeCourse, hwNextDraft); setHwNextEditing(false); }}>✓</button>
+            </div>
+          ) : (
+            <button aria-label="HA für nächstes Mal eintragen"
+              onClick={() => { setHwNextDraft(hwSaved); setHwNextEditing(true); }}
+              style={{ fontSize:15, color: hwSaved ? C.text : C.textMuted, cursor:"pointer",
+                       width:"100%", textAlign:"left", minHeight:44, background:"none",
+                       WebkitAppearance:"none",
+                       padding:"12px", borderRadius:8, border:`1px dashed ${C.border}` }}>
+              {hwSaved ? <><span style={{ color:C.textDim }}>HA für nächstes Mal: </span>{hwSaved}</> : "+ HA für nächstes Mal (optional)"}
             </button>
           )}
 
@@ -1911,6 +1983,38 @@ function App() {
                   ))}
                 </div>
               )}
+            </div>
+          );
+        })()}
+
+        {/* HA für nächstes Mal — wird zu Beginn der nächsten Stunde in der
+            Vorbereitungs-Phase wieder angezeigt (getLastAssignedHomework). */}
+        {(() => {
+          const tKey  = `${today}_${activeCourse}`;
+          const saved = homeworkAssigned[tKey] || "";
+          const save  = (v) => { setHomeworkAssignedFor(activeCourse, v); setHwNextEditing(false); };
+          if (!hwNextEditing) return (
+            <button aria-label="HA für nächstes Mal eintragen"
+              onClick={() => { setHwNextDraft(saved); setHwNextEditing(true); }}
+              style={{ fontSize:15, color: saved ? C.text : C.textMuted, cursor:"pointer",
+                       width:"100%", textAlign:"left", minHeight:44, background:"none",
+                       padding:"12px", marginBottom:14, borderRadius:8,
+                       WebkitAppearance:"none",
+                       border:`1px dashed ${C.border}` }}>
+              {saved ? <><span style={{ color:C.textDim }}>HA für nächstes Mal: </span>{saved}</> : "+ HA für nächstes Mal (optional)"}
+            </button>
+          );
+          return (
+            <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+              <input autoFocus value={hwNextDraft}
+                onChange={e => setHwNextDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") save(hwNextDraft);
+                                  if (e.key === "Escape") setHwNextEditing(false); }}
+                placeholder="HA für nächstes Mal" {...inputFocus}
+                style={{ flex:1, padding:"12px 11px", background:C.surface,
+                         border:`1px solid ${C.accent}`, borderRadius:8, color:C.text,
+                         fontSize:15, outline:"none" }} />
+              <button style={S.btnSm("primary")} onClick={() => save(hwNextDraft)}>✓</button>
             </div>
           );
         })()}
@@ -2338,6 +2442,7 @@ function App() {
     // A lesson counts as held if anything at all was recorded for it.
     const keys = new Set([
       ...Object.keys(topics), ...Object.keys(absences), ...Object.keys(homework),
+      ...Object.keys(homeworkAssigned),
       ...observations.map(o => `${o.date}_${o.course}`),
     ]);
     const cutoff = new Date(Date.now() - 7*86400000).toISOString().slice(0,10);
@@ -2353,6 +2458,7 @@ function App() {
       return {
         key:k, date, course, topic: topics[k] || "", absentNames,
         hwText: !hw ? null : missing === 0 ? "HA vollständig" : `HA: ${missing}× unvollständig`,
+        hwNextText: homeworkAssigned[k] || "",
         obsCount: observations.filter(o => o.date === date && o.course === course && isRating(o)).length,
       };
     })
@@ -2435,6 +2541,11 @@ function App() {
                   {r.absentNames.length ? `Fehlend: ${r.absentNames.join(", ")}` : "Vollzählig"}
                   {r.hwText ? ` · ${r.hwText}` : ""}
                 </div>
+                {r.hwNextText && (
+                  <div style={{ fontSize:13, color:C.textDim, marginTop:2 }}>
+                    HA für nächstes Mal: {r.hwNextText}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -2511,7 +2622,7 @@ function App() {
         onClick={() => {
           if (window.confirm("Wirklich ALLE Daten löschen? Dies kann nicht rückgängig gemacht werden.")) {
             ["obs_courses","obs_observations","obs_homework","obs_absences","obs_topics",
-             "obs_materials","obs_tests",
+             "obs_materials","obs_tests","obs_homeworkAssigned",
              "obs_session","obs_lastAutoBackup","obs_nextAutoBackupDays"].forEach(k => localStorage.removeItem(k));
             window.location.reload();
           }
