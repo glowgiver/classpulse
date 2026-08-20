@@ -259,7 +259,7 @@ const migrateCourseNames = () => {
 
     // homework/absences are keyed "YYYY-MM-DD_Kursname"; split at the first "_"
     // only, since course names may contain further underscores.
-    ["obs_homework", "obs_absences", "obs_materials", "obs_homeworkAssigned"].forEach(key => {
+    ["obs_homework", "obs_absences", "obs_materials", "obs_homeworkAssigned", "obs_excusedAbsences"].forEach(key => {
       const val = loadData(key, null);
       if (!val) return;
       const out = {};
@@ -417,6 +417,12 @@ function App() {
   const [observations, setObservations] = useState(() => loadData("obs_observations", []));
   const [homework,     setHomework]     = useState(() => loadData("obs_homework", {}));
   const [absences,     setAbsences]     = useState(() => loadData("obs_absences", {}));
+  // Wer von den in `absences` erfassten Fehltagen entschuldigt ist — separat
+  // gehalten, weil das oft erst Tage später (Entschuldigungszettel) feststeht
+  // und den schnellen Fehlende-Tap in der laufenden Stunde nicht ausbremsen
+  // soll. Gleiches Schlüsselschema "YYYY-MM-DD_Kursname" → [studentId, ...],
+  // nur relevant für IDs, die an diesem Tag auch in `absences` stehen.
+  const [excusedAbsences, setExcusedAbsences] = useState(() => loadData("obs_excusedAbsences", {}));
   // Lesson topic per course and day, same "YYYY-MM-DD_Kursname" key as the two above.
   const [topics,       setTopics]       = useState(() => loadData("obs_topics", {}));
   // Was für die nächste Stunde aufgegeben wurde — nicht zu verwechseln mit
@@ -470,6 +476,7 @@ function App() {
   const [backfillCourse, setBackfillCourse] = useState(null);
   const [backfillDate,   setBackfillDate]   = useState("");
   const [backfillAbsent, setBackfillAbsent] = useState([]);
+  const [backfillExcused, setBackfillExcused] = useState([]);
   const [backfillTopic,  setBackfillTopic]  = useState("");
   const [backfillHwNext, setBackfillHwNext] = useState("");
 
@@ -547,6 +554,7 @@ function App() {
     setBackfillCourse(courseName);
     setBackfillDate(date);
     setBackfillAbsent(absences[key] || []);
+    setBackfillExcused(excusedAbsences[key] || []);
     setBackfillTopic(topics[key] || "");
     setBackfillHwNext(homeworkAssigned[key] || "");
   };
@@ -555,9 +563,18 @@ function App() {
     setBackfillAbsent(prev => prev.includes(studentId) ? prev.filter(i => i !== studentId) : [...prev, studentId]);
   };
 
+  // Entschuldigt ist nur sinnvoll für jemanden, der auch als fehlend markiert
+  // ist — kommt meist erst Tage später rein (Entschuldigungszettel), deshalb
+  // hier im Nachtragen-Screen statt im schnellen Fehlende-Tap der Stunde.
+  const toggleBackfillExcused = (studentId) => {
+    setBackfillExcused(prev => prev.includes(studentId) ? prev.filter(i => i !== studentId) : [...prev, studentId]);
+  };
+
   const saveBackfill = () => {
     const key = `${backfillDate}_${backfillCourse}`;
     setAbsences(prev => ({ ...prev, [key]: backfillAbsent }));
+    // Entschuldigt kann nur bleiben, wer auch tatsächlich (noch) als fehlend markiert ist.
+    setExcusedAbsences(prev => ({ ...prev, [key]: backfillExcused.filter(id => backfillAbsent.includes(id)) }));
     setTopics(prev => {
       const next = { ...prev };
       if (backfillTopic.trim()) next[key] = backfillTopic.trim(); else delete next[key];
@@ -651,6 +668,7 @@ function App() {
   useEffect(() => saveData("obs_observations", observations), [observations]);
   useEffect(() => saveData("obs_homework",     homework),     [homework]);
   useEffect(() => saveData("obs_absences",     absences),     [absences]);
+  useEffect(() => saveData("obs_excusedAbsences", excusedAbsences), [excusedAbsences]);
   useEffect(() => saveData("obs_topics",       topics),       [topics]);
   useEffect(() => saveData("obs_homeworkAssigned", homeworkAssigned), [homeworkAssigned]);
   useEffect(() => saveData("obs_materials",    materials),    [materials]);
@@ -1020,7 +1038,7 @@ function App() {
   // Eine Quelle, ein Trennzeichen.
   const courseCsvBlock = (course) => {
     const criteria = getCriteria(course.name);
-    const lines = [`Name;${criteria.map(c => c.short).join(";")};HA-Quote;Material-Quote;Test-Ø;Fehltage;Gesamt`];
+    const lines = [`Name;${criteria.map(c => c.short).join(";")};HA-Quote;Material-Quote;Test-Ø;Fehltage;davon unentschuldigt;Gesamt`];
     course.students.forEach(st => {
       const obs = obsFor(course.name, st.id);
       const critSummary = criteria.map(crit => {
@@ -1034,11 +1052,13 @@ function App() {
       const matPct = matQ.count > 0 ? `${Math.round(matQ.quote*100)}%` : "-";
       const testAvg = getTestAverage(course.name, st.id);
       const testStr = testAvg ? `${Math.round(testAvg.avg*10)/10}` : "-";
-      let absentCount = 0;
+      let absentCount = 0, unexcusedCount = 0;
       Object.entries(absences).forEach(([key, ids]) => {
-        if (key.endsWith(`_${course.name}`) && ids.includes(st.id)) absentCount++;
+        if (!key.endsWith(`_${course.name}`) || !ids.includes(st.id)) return;
+        absentCount++;
+        if (!(excusedAbsences[key] || []).includes(st.id)) unexcusedCount++;
       });
-      lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${matPct};${testStr};${absentCount};${obs.length}`);
+      lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${matPct};${testStr};${absentCount};${unexcusedCount};${obs.length}`);
     });
     return lines;
   };
@@ -1059,7 +1079,7 @@ function App() {
       version: "1.0",
       exportDate: new Date().toISOString(),
       app: "ClassPulse",
-      data: { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned },
+      data: { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences },
     };
     const json = JSON.stringify(backup, null, 2);
     const blob = new Blob([json], { type:"application/json" });
@@ -1088,6 +1108,7 @@ function App() {
         const mat = backup.data.materials && typeof backup.data.materials === "object" ? backup.data.materials : {};
         const tst = Array.isArray(backup.data.tests) ? backup.data.tests : [];
         const hwa = backup.data.homeworkAssigned && typeof backup.data.homeworkAssigned === "object" ? backup.data.homeworkAssigned : {};
+        const exa = backup.data.excusedAbsences  && typeof backup.data.excusedAbsences  === "object" ? backup.data.excusedAbsences  : {};
         if (!Array.isArray(c) || !Array.isArray(o) ||
             !h || typeof h !== "object" || !a || typeof a !== "object")
           throw new Error("Daten unvollständig oder beschädigt");
@@ -1108,6 +1129,7 @@ function App() {
         setMaterials(mat);
         setTests(tst);
         setHomeworkAssigned(hwa);
+        setExcusedAbsences(exa);
         saveData("obs_courses",      c);
         saveData("obs_observations", o);
         saveData("obs_homework",     h);
@@ -1116,6 +1138,7 @@ function App() {
         saveData("obs_materials",    mat);
         saveData("obs_tests",        tst);
         saveData("obs_homeworkAssigned", hwa);
+        saveData("obs_excusedAbsences",  exa);
         setBackupImportOK(true);
         setBackupError("");
         setTimeout(() => setBackupImportOK(false), 3000);
@@ -2457,8 +2480,13 @@ function App() {
       const i = k.indexOf("_");
       const date = k.slice(0, i), course = k.slice(i+1);
       const c = courses.find(x => x.name === course);
+      const excusedIds = excusedAbsences[k] || [];
       const absentNames = (absences[k] || [])
-        .map(id => c?.students.find(s => s.id === id)?.name)
+        .map(id => {
+          const name = c?.students.find(s => s.id === id)?.name;
+          if (!name) return null;
+          return excusedIds.includes(id) ? `${name} (entschuldigt)` : name;
+        })
         .filter(Boolean);
       const hw = homework[k];
       const missing = hw ? Object.values(hw).filter(v => v !== "done").length : 0;
@@ -2616,6 +2644,7 @@ function App() {
           setBackfillCourse(null);
           setBackfillDate(dateKey(new Date(Date.now() - 86400000)));
           setBackfillAbsent([]);
+          setBackfillExcused([]);
           setBackfillTopic("");
           setBackfillHwNext("");
         }}>
@@ -2637,7 +2666,7 @@ function App() {
         onClick={() => {
           if (window.confirm("Wirklich ALLE Daten löschen? Dies kann nicht rückgängig gemacht werden.")) {
             ["obs_courses","obs_observations","obs_homework","obs_absences","obs_topics",
-             "obs_materials","obs_tests","obs_homeworkAssigned",
+             "obs_materials","obs_tests","obs_homeworkAssigned","obs_excusedAbsences",
              "obs_session","obs_lastAutoBackup","obs_nextAutoBackupDays"].forEach(k => localStorage.removeItem(k));
             window.location.reload();
           }
@@ -2815,18 +2844,29 @@ function App() {
                      boxSizing:"border-box" }} />
 
           {course.students.map(st => {
-            const absent = backfillAbsent.includes(st.id);
+            const absent  = backfillAbsent.includes(st.id);
+            const excused = backfillExcused.includes(st.id);
             return (
-              <button key={st.id} onClick={() => toggleBackfillAbsent(st.id)}
-                style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer",
-                         WebkitAppearance:"none",
-                         background: absent ? C.redSoft : C.card,
-                         borderColor: absent ? C.red : C.border }}>
-                <span style={{ fontSize:15, fontWeight:500, color: absent ? C.red : C.text }}>{st.name}</span>
-                <span style={{ fontSize:13, fontWeight:700, color: absent ? C.red : C.textDim }}>
-                  {absent ? "fehlt" : "da"}
-                </span>
-              </button>
+              <div key={st.id} style={{ ...S.row,
+                       background: absent ? C.redSoft : C.card,
+                       borderColor: absent ? C.red : C.border }}>
+                <button onClick={() => toggleBackfillAbsent(st.id)}
+                  style={{ background:"none", border:"none", textAlign:"left", cursor:"pointer",
+                           WebkitAppearance:"none", padding:0, flex:1, minHeight:32 }}>
+                  <span style={{ fontSize:15, fontWeight:500, color: absent ? C.red : C.text }}>{st.name}</span>
+                </button>
+                <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                  {absent && (
+                    <button onClick={() => toggleBackfillExcused(st.id)}
+                      style={{ ...S.btnSm(excused ? "green" : "ghost"), padding:"6px 10px", fontSize:12 }}>
+                      {excused ? "✓ entschuldigt" : "entschuldigt?"}
+                    </button>
+                  )}
+                  <span style={{ fontSize:13, fontWeight:700, color: absent ? C.red : C.textDim }}>
+                    {absent ? "fehlt" : "da"}
+                  </span>
+                </div>
+              </div>
             );
           })}
           <button style={S.btn("primary")} onClick={saveBackfill}>Speichern</button>
