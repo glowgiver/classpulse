@@ -471,6 +471,7 @@ function App() {
   const [backfillDate,   setBackfillDate]   = useState("");
   const [backfillAbsent, setBackfillAbsent] = useState([]);
   const [backfillTopic,  setBackfillTopic]  = useState("");
+  const [backfillHwNext, setBackfillHwNext] = useState("");
 
   // Tests: eigener Modal, außerhalb des Stundenablaufs — am Schreibtisch
   // eingetragen, nicht zwischen zwei Wortmeldungen.
@@ -547,6 +548,7 @@ function App() {
     setBackfillDate(date);
     setBackfillAbsent(absences[key] || []);
     setBackfillTopic(topics[key] || "");
+    setBackfillHwNext(homeworkAssigned[key] || "");
   };
 
   const toggleBackfillAbsent = (studentId) => {
@@ -559,6 +561,11 @@ function App() {
     setTopics(prev => {
       const next = { ...prev };
       if (backfillTopic.trim()) next[key] = backfillTopic.trim(); else delete next[key];
+      return next;
+    });
+    setHomeworkAssigned(prev => {
+      const next = { ...prev };
+      if (backfillHwNext.trim()) next[key] = backfillHwNext.trim(); else delete next[key];
       return next;
     });
     setShowBackfill(false);
@@ -2603,6 +2610,7 @@ function App() {
           setBackfillDate(dateKey(new Date(Date.now() - 86400000)));
           setBackfillAbsent([]);
           setBackfillTopic("");
+          setBackfillHwNext("");
         }}>
         <Icon name="users" size={16} color={C.textDim} /> Stunde nachtragen (z.B. bei Vertretung)
       </button>
@@ -2789,6 +2797,12 @@ function App() {
 
           <input value={backfillTopic} onChange={e => setBackfillTopic(e.target.value)}
             placeholder="Thema dieser Stunde (optional)" {...inputFocus}
+            style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
+                     borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:8,
+                     boxSizing:"border-box" }} />
+
+          <input value={backfillHwNext} onChange={e => setBackfillHwNext(e.target.value)}
+            placeholder="HA für nächstes Mal (optional)" {...inputFocus}
             style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
                      borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:14,
                      boxSizing:"border-box" }} />
