@@ -2533,15 +2533,19 @@ function App() {
               <span style={{ fontWeight:400, color:C.textDim, fontSize:13 }}> · {g.rows.length} Stunden</span>
             </div>
             {g.rows.map(r => (
-              <div key={r.key} className="logbook-row"
-                style={{ padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
+              <button key={r.key} className="logbook-row"
+                aria-label={`${r.course} vom ${fmtLogDate(r.date)} bearbeiten`}
+                onClick={() => { openBackfill(r.course, r.date); setShowBackfill(true); }}
+                style={{ display:"block", width:"100%", textAlign:"left", cursor:"pointer",
+                         background:"none", border:"none", WebkitAppearance:"none",
+                         padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
                 <div style={{ display:"flex", justifyContent:"space-between", gap:10, marginBottom:2 }}>
-                  <span style={{ fontSize:15, fontWeight:700 }}>{fmtLogDate(r.date)}</span>
+                  <span style={{ fontSize:15, fontWeight:700, color:C.text }}>{fmtLogDate(r.date)}</span>
                   <span style={{ fontSize:13, color:C.textDim, flexShrink:0 }}>
                     {r.obsCount > 0 ? `${r.obsCount} Beob.` : ""}
                   </span>
                 </div>
-                <div style={{ fontSize:15, marginBottom:3 }}>
+                <div style={{ fontSize:15, marginBottom:3, color:C.text }}>
                   {r.topic || <span style={{ color:C.textMuted, fontStyle:"italic" }}>kein Thema eingetragen</span>}
                 </div>
                 <div style={{ fontSize:13, color:C.textDim }}>
@@ -2553,7 +2557,10 @@ function App() {
                     HA für nächstes Mal: {r.hwNextText}
                   </div>
                 )}
-              </div>
+                <div className="no-print" style={{ fontSize:12, color:C.accent, marginTop:4 }}>
+                  Antippen zum Bearbeiten
+                </div>
+              </button>
             ))}
           </div>
         ))}
