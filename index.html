@@ -491,6 +491,11 @@ function App() {
   const [showBackup,    setShowBackup]    = useState(false);
   const [backupImportOK,setBackupImportOK]= useState(false);
   const [backupError,   setBackupError]  = useState("");
+  // Zahlen aus der zuletzt heruntergeladenen Datei — zum Selbst-Nachprüfen,
+  // ohne die Datei zu öffnen. "Vertrau mir" ist kein Ersatz dafür, dass man
+  // im Moment des Downloads sieht: stimmt das mit dem überein, was ich heute
+  // gemacht habe.
+  const [backupSummary, setBackupSummary] = useState(null);
 
   const [editingStudentKey, setEditingStudentKey] = useState(null);
   const [editStudentValue,  setEditStudentValue]  = useState("");
@@ -1074,12 +1079,29 @@ function App() {
   };
 
   // ── JSON BACKUP ──────────────────────────────────────────────────────────
+  // Zahlen fürs Nachprüfen — aus genau dem Objekt berechnet, das gerade in
+  // die Datei geschrieben wurde, nicht neu aus dem Live-State. So beschreibt
+  // die Anzeige garantiert das, was tatsächlich in der heruntergeladenen
+  // Datei steht, nicht nur, was der App-Zustand im selben Moment zufällig ist.
+  const summarizeBackup = (data) => {
+    const ratedObs = data.observations.filter(isRating);
+    const dates = ratedObs.map(o => o.date);
+    return {
+      courses: data.courses.length,
+      observations: ratedObs.length,
+      coursesWithData: new Set(ratedObs.map(o => o.course)).size,
+      topics: Object.keys(data.topics || {}).length,
+      lastDate: dates.length ? dates.reduce((a, b) => a > b ? a : b) : null,
+    };
+  };
+
   const downloadBackup = (filenamePrefix) => {
+    const data = { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences };
     const backup = {
       version: "1.0",
       exportDate: new Date().toISOString(),
       app: "ClassPulse",
-      data: { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences },
+      data,
     };
     const json = JSON.stringify(backup, null, 2);
     const blob = new Blob([json], { type:"application/json" });
@@ -1089,6 +1111,8 @@ function App() {
     a.href = url; a.download = `${filenamePrefix}_${date}.json`;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
+    setBackupSummary(summarizeBackup(data));
+    return data;
   };
 
   const exportBackup = () => downloadBackup("ClassPulse_Backup");
@@ -2616,6 +2640,24 @@ function App() {
             <Icon name="download" size={16} color={C.onFill} /> Backup herunterladen (.json)
           </span>
         </button>
+
+        {/* Aus dem Objekt berechnet, das gerade in die Datei geschrieben wurde —
+            zum Selbst-Nachprüfen im Moment des Downloads, statt später zu
+            hoffen, dass die Datei wirklich alles enthält. */}
+        {backupSummary && (
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px", marginTop:10 }}>
+            <div style={{ fontSize:12, color:C.textDim, marginBottom:4 }}>
+              Zum Nachprüfen — das steht in der gerade heruntergeladenen Datei:
+            </div>
+            <div style={{ fontSize:15, color:C.text, lineHeight:"1.6" }}>
+              {backupSummary.courses} Kurse · {backupSummary.observations} Beobachtungen in {backupSummary.coursesWithData} Kursen · {backupSummary.topics} Themen erfasst<br/>
+              {backupSummary.lastDate
+                ? <>Letzte Beobachtung: <strong>{fmtLogDate(backupSummary.lastDate)}</strong></>
+                : "Noch keine Beobachtungen erfasst"}
+            </div>
+          </div>
+        )}
+
         <div style={{ ...S.sectionLbl, marginTop:16 }}>Backup wiederherstellen</div>
         <div style={{ fontSize:13, color:C.textDim, marginBottom:8 }}>
           Backup-Datei auswählen — alle aktuellen Daten werden ersetzt.
