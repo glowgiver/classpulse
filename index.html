@@ -61,22 +61,6 @@ const { useState, useEffect, useCallback, useMemo } = React;
 
 // ─── DATA ────────────────────────────────────────────────────────────────────
 
-const SCHEDULE = [
-  { day: 1, start: "08:00", end: "09:30", course: "8a Englisch",         type: "double" },
-  { day: 1, start: "09:50", end: "11:20", course: "11P Social Studies",  type: "double" },
-  { day: 1, start: "13:20", end: "14:50", course: "Jg9 Social Studies",  type: "double" },
-  { day: 2, start: "08:00", end: "09:30", course: "Jg10 Social Studies", type: "double" },
-  { day: 3, start: "08:00", end: "09:30", course: "12. Kl. Englisch",    type: "double" },
-  { day: 3, start: "09:50", end: "11:20", course: "11P Social Studies",  type: "double" },
-  { day: 3, start: "11:35", end: "12:20", course: "Jg9 Social Studies",  type: "single" },
-  { day: 4, start: "09:50", end: "11:20", course: "Jg8 History",         type: "double" },
-  { day: 4, start: "11:35", end: "12:20", course: "8a Englisch",         type: "single" },
-  { day: 4, start: "13:30", end: "15:00", course: "11P WiE",             type: "double" },
-  { day: 5, start: "09:50", end: "11:20", course: "12. Kl. Englisch",    type: "double" },
-  { day: 5, start: "11:35", end: "13:05", course: "Jg10 History",        type: "double" },
-  { day: 5, start: "13:30", end: "15:00", course: "12. Kl. WiE",        type: "double" },
-];
-
 const DAYS = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 
 const ENGLISH_COURSES = ["8a Englisch", "12. Kl. Englisch"];
@@ -196,26 +180,34 @@ const DEFAULT_STUDENTS = [];
 // notenformat: "drittelnoten" (Sek I/II Mittelstufe) oder "punkte" (Oberstufe
 // ab Jg. 11, Notenpunkte 0–15). Bestimmt, wie Testnoten eingegeben und wie der
 // Notenvorschlag beschriftet wird.
+// slots: Stundenplan-Termine (day 1=Montag..5=Freitag). Dies ist nur die
+// Werkseinstellung für einen brandneuen Kurs bzw. die Erstinstallation — der
+// tatsächliche, editierbare Bestand lebt in `courses` (React-State), siehe
+// „Kursverwaltung" weiter unten. COURSES_META hier nie zur Laufzeit lesen.
 const COURSES_META = [
-  { name: "8a Englisch",         criteriaType: "fremdsprachen", classGroup: "8a",   mitarbeit: 60, notenformat: "drittelnoten" },
-  { name: "Jg8 History",         criteriaType: "general",       classGroup: "Jg8",  mitarbeit: 60, notenformat: "drittelnoten" },
-  { name: "Jg9 Social Studies",  criteriaType: "general",       classGroup: "Jg9",  mitarbeit: 70, notenformat: "drittelnoten" },
-  { name: "11P Social Studies",  criteriaType: "general",       classGroup: "11P",  mitarbeit: 60, notenformat: "punkte" },
-  { name: "Jg10 Social Studies", criteriaType: "general",       classGroup: "Jg10", mitarbeit: 60, notenformat: "drittelnoten" },
-  { name: "Jg10 History",        criteriaType: "general",       classGroup: "Jg10", mitarbeit: 60, notenformat: "drittelnoten" },
-  { name: "12. Kl. Englisch",    criteriaType: "fremdsprachen", classGroup: "12Kl", mitarbeit: 60, notenformat: "punkte" },
-  { name: "11P WiE",             criteriaType: "general",       classGroup: "11P",  mitarbeit: 60, notenformat: "punkte" },
-  { name: "12. Kl. WiE",         criteriaType: "general",       classGroup: "12Kl", mitarbeit: 60, notenformat: "punkte" },
+  { name: "8a Englisch",         criteriaType: "fremdsprachen", classGroup: "8a",   mitarbeit: 60, notenformat: "drittelnoten",
+    slots: [{ day:1, start:"08:00", end:"09:30", type:"double" }, { day:4, start:"11:35", end:"12:20", type:"single" }] },
+  { name: "Jg8 History",         criteriaType: "general",       classGroup: "Jg8",  mitarbeit: 60, notenformat: "drittelnoten",
+    slots: [{ day:4, start:"09:50", end:"11:20", type:"double" }] },
+  { name: "Jg9 Social Studies",  criteriaType: "general",       classGroup: "Jg9",  mitarbeit: 70, notenformat: "drittelnoten",
+    slots: [{ day:1, start:"13:20", end:"14:50", type:"double" }, { day:3, start:"11:35", end:"12:20", type:"single" }] },
+  { name: "11P Social Studies",  criteriaType: "general",       classGroup: "11P",  mitarbeit: 60, notenformat: "punkte",
+    slots: [{ day:1, start:"09:50", end:"11:20", type:"double" }, { day:3, start:"09:50", end:"11:20", type:"double" }] },
+  { name: "Jg10 Social Studies", criteriaType: "general",       classGroup: "Jg10", mitarbeit: 60, notenformat: "drittelnoten",
+    slots: [{ day:2, start:"08:00", end:"09:30", type:"double" }] },
+  { name: "Jg10 History",        criteriaType: "general",       classGroup: "Jg10", mitarbeit: 60, notenformat: "drittelnoten",
+    slots: [{ day:5, start:"11:35", end:"13:05", type:"double" }] },
+  { name: "12. Kl. Englisch",    criteriaType: "fremdsprachen", classGroup: "12Kl", mitarbeit: 60, notenformat: "punkte",
+    slots: [{ day:3, start:"08:00", end:"09:30", type:"double" }, { day:5, start:"09:50", end:"11:20", type:"double" }] },
+  { name: "11P WiE",             criteriaType: "general",       classGroup: "11P",  mitarbeit: 60, notenformat: "punkte",
+    slots: [{ day:4, start:"13:30", end:"15:00", type:"double" }] },
+  { name: "12. Kl. WiE",         criteriaType: "general",       classGroup: "12Kl", mitarbeit: 60, notenformat: "punkte",
+    slots: [{ day:5, start:"13:30", end:"15:00", type:"double" }] },
 ];
 
-// Der Anteil, mit dem die laufende Mitarbeit in die Gesamtnote eingeht.
-// Ein aus einem alten Backup wiederhergestellter Kurs kennt das Feld nicht —
-// dann gilt der an dieser Schule übliche Regelfall.
-const getMitarbeitAnteil = (courseName) =>
-  COURSES_META.find(c => c.name === courseName)?.mitarbeit ?? 60;
-
-const getNotenformat = (courseName) =>
-  COURSES_META.find(c => c.name === courseName)?.notenformat ?? "drittelnoten";
+// getMitarbeitAnteil/getNotenformat/getCriteria/getCurrentSlot leben als
+// Closures in App() — sie müssen den editierbaren `courses`-State lesen,
+// nicht die feste COURSES_META-Werkseinstellung (siehe Kursverwaltung).
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -259,7 +251,9 @@ const migrateCourseNames = () => {
 
     // homework/absences are keyed "YYYY-MM-DD_Kursname"; split at the first "_"
     // only, since course names may contain further underscores.
-    ["obs_homework", "obs_absences", "obs_materials", "obs_homeworkAssigned", "obs_excusedAbsences"].forEach(key => {
+    // obs_topics belongs in this list too — it uses the same key scheme and was
+    // simply missed when this migration was first written for the Jg8/Jg9 rename.
+    ["obs_homework", "obs_absences", "obs_materials", "obs_homeworkAssigned", "obs_excusedAbsences", "obs_topics"].forEach(key => {
       const val = loadData(key, null);
       if (!val) return;
       const out = {};
@@ -280,23 +274,25 @@ const migrateCourseNames = () => {
 };
 migrateCourseNames();
 
-// criteriaType is the source of truth; ENGLISH_COURSES only fills in for a course
-// that isn't in COURSES_META (e.g. one restored from an older backup). A course
-// marked "none" is not graded at all, so it gets no criteria.
-const getCriteria = (courseName) => {
-  const meta = COURSES_META.find(c => c.name === courseName);
-  if (meta?.criteriaType === "none") return [];
-  if (meta?.criteriaType === "fremdsprachen") return FREMDSPRACHEN_CRITERIA;
-  if (meta?.criteriaType === "general")       return GENERAL_CRITERIA;
-  return ENGLISH_COURSES.includes(courseName) ? FREMDSPRACHEN_CRITERIA : GENERAL_CRITERIA;
+// Stundenplan-Termine zogen von einer eigenen, festen SCHEDULE-Konstante in ein
+// `slots`-Feld pro Kurs um, damit die neue Kursverwaltung sie bearbeiten kann.
+// Ein bereits gespeicherter Kurs kennt dieses Feld noch nicht — hier einmalig
+// aus der (namensgleichen) Werkseinstellung nachrüsten, sonst verschwindet der
+// Stundenplan beim ersten Laden nach dem Update.
+const migrateSlots = () => {
+  try {
+    if (localStorage.getItem("obs_slotsMigration_v1")) return;
+    const courses = loadData("obs_courses", null);
+    if (courses) {
+      saveData("obs_courses", courses.map(c => ({
+        ...c,
+        slots: c.slots || COURSES_META.find(m => m.name === c.name)?.slots || [],
+      })));
+    }
+    localStorage.setItem("obs_slotsMigration_v1", "1");
+  } catch(e) {}
 };
-
-const getCurrentSlot = () => {
-  const now = new Date();
-  const day = now.getDay();
-  const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-  return SCHEDULE.find(s => s.day === day && hhmm >= s.start && hhmm <= s.end) || null;
-};
+migrateSlots();
 
 // ─── COLORS & STYLES ─────────────────────────────────────────────────────────
 
@@ -414,6 +410,36 @@ const Icon = ({ name, size=20, color=C.textDim }) => {
 function App() {
   const [page,         setPage]         = useState("home");
   const [courses,      setCourses]      = useState(() => loadData("obs_courses", COURSES_META.map(c => ({ ...c, students: [...DEFAULT_STUDENTS] }))));
+
+  // Lesen den editierbaren `courses`-State, nicht COURSES_META — ein Kurs, den
+  // die Lehrkraft gerade in der Kursverwaltung anlegt/umbenennt/umstellt, muss
+  // hier sofort ankommen, nicht erst nach einem Reload.
+  const getMitarbeitAnteil = (courseName) =>
+    courses.find(c => c.name === courseName)?.mitarbeit ?? 60;
+
+  const getNotenformat = (courseName) =>
+    courses.find(c => c.name === courseName)?.notenformat ?? "drittelnoten";
+
+  // criteriaType is the source of truth; ENGLISH_COURSES only fills in for a course
+  // that isn't in `courses` (e.g. one restored from an older backup). A course
+  // marked "none" is not graded at all, so it gets no criteria.
+  const getCriteria = (courseName) => {
+    const meta = courses.find(c => c.name === courseName);
+    if (meta?.criteriaType === "none") return [];
+    if (meta?.criteriaType === "fremdsprachen") return FREMDSPRACHEN_CRITERIA;
+    if (meta?.criteriaType === "general")       return GENERAL_CRITERIA;
+    return ENGLISH_COURSES.includes(courseName) ? FREMDSPRACHEN_CRITERIA : GENERAL_CRITERIA;
+  };
+
+  const getAllSlots = () =>
+    courses.flatMap(c => (c.slots || []).map(sl => ({ ...sl, course: c.name, criteriaType: c.criteriaType })));
+
+  const getCurrentSlot = () => {
+    const now = new Date();
+    const day = now.getDay();
+    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+    return getAllSlots().find(s => s.day === day && hhmm >= s.start && hhmm <= s.end) || null;
+  };
   const [observations, setObservations] = useState(() => loadData("obs_observations", []));
   const [homework,     setHomework]     = useState(() => loadData("obs_homework", {}));
   const [absences,     setAbsences]     = useState(() => loadData("obs_absences", {}));
@@ -461,6 +487,11 @@ function App() {
   const [copyOK,        setCopyOK]        = useState(false);
   const [infoCrit,      setInfoCrit]      = useState(null);
   const [openCourse,   setOpenCourse]    = useState(null);
+  // Kursverwaltung: null = Liste, "__new__" = neuer Kurs, sonst der
+  // ursprüngliche Name des gerade bearbeiteten Kurses (für die Umbenennung).
+  const [editingCourseName, setEditingCourseName] = useState(null);
+  const [courseForm,        setCourseForm]        = useState(null);
+  const [confirmDeleteCourse, setConfirmDeleteCourse] = useState(false);
   const [openStats,    setOpenStats]     = useState(null);
   const [nameFilter,   setNameFilter]    = useState("");   // Beobachten-Liste
   const [hwFilter,     setHwFilter]      = useState("");   // Hausaufgaben-Phase
@@ -985,6 +1016,99 @@ function App() {
     ));
   };
 
+  // ── KURSVERWALTUNG ──────────────────────────────────────────────────────
+  const openCourseEditor = (course) => {
+    setCourseForm({
+      name: course.name, classGroup: course.classGroup || "",
+      criteriaType: course.criteriaType || "general", notenformat: course.notenformat || "drittelnoten",
+      mitarbeit: course.mitarbeit ?? 60, slots: (course.slots || []).map(s => ({ ...s })),
+    });
+    setEditingCourseName(course.name);
+    setConfirmDeleteCourse(false);
+  };
+
+  const openNewCourseEditor = () => {
+    setCourseForm({ name:"", classGroup:"", criteriaType:"general", notenformat:"drittelnoten", mitarbeit:60, slots:[] });
+    setEditingCourseName("__new__");
+    setConfirmDeleteCourse(false);
+  };
+
+  const closeCourseEditor = () => {
+    setEditingCourseName(null);
+    setCourseForm(null);
+    setConfirmDeleteCourse(false);
+  };
+
+  const addCourseSlot = () => {
+    setCourseForm(f => ({ ...f, slots: [...f.slots, { day:1, start:"08:00", end:"09:30", type:"double" }] }));
+  };
+  const updateCourseSlot = (i, field, value) => {
+    setCourseForm(f => ({ ...f, slots: f.slots.map((s, idx) => idx === i ? { ...s, [field]: value } : s) }));
+  };
+  const removeCourseSlot = (i) => {
+    setCourseForm(f => ({ ...f, slots: f.slots.filter((_, idx) => idx !== i) }));
+  };
+
+  // Spiegelt migrateCourseNames() (Zeile ~230) — dieselben Datenzweige, nur
+  // über React-State-Setter statt rohes localStorage, weil die App hier schon
+  // läuft statt gerade zu starten.
+  const renameCourseEverywhere = (oldName, newName) => {
+    const remapKeyed = (obj) => {
+      const out = {};
+      Object.entries(obj).forEach(([k, v]) => {
+        const i = k.indexOf("_");
+        const course = i < 0 ? k : k.slice(i + 1);
+        out[course === oldName ? `${k.slice(0, i)}_${newName}` : k] = v;
+      });
+      return out;
+    };
+    setObservations(prev => prev.map(o => o.course === oldName ? { ...o, course: newName } : o));
+    setTests(prev => prev.map(t => t.course === oldName ? { ...t, course: newName } : t));
+    setHomework(prev => remapKeyed(prev));
+    setAbsences(prev => remapKeyed(prev));
+    setMaterials(prev => remapKeyed(prev));
+    setHomeworkAssigned(prev => remapKeyed(prev));
+    setExcusedAbsences(prev => remapKeyed(prev));
+    setTopics(prev => remapKeyed(prev));
+    if (activeCourse === oldName) setActiveCourse(newName);
+  };
+
+  const saveCourseEditor = () => {
+    const f = courseForm;
+    const trimmedName = f.name.trim();
+    if (!trimmedName) { window.alert("Ein Kursname ist nötig."); return; }
+    const isNew = editingCourseName === "__new__";
+    const nameChanged = !isNew && trimmedName !== editingCourseName;
+    const collision = courses.some(c => c.name === trimmedName && c.name !== editingCourseName);
+    if ((isNew || nameChanged) && collision) {
+      window.alert(`Ein Kurs namens "${trimmedName}" existiert schon.`);
+      return;
+    }
+    const mitarbeitNum = Math.max(0, Math.min(100, Number(f.mitarbeit) || 0));
+
+    if (isNew) {
+      setCourses(prev => [...prev, {
+        name: trimmedName, classGroup: f.classGroup.trim(), criteriaType: f.criteriaType,
+        notenformat: f.notenformat, mitarbeit: mitarbeitNum, slots: f.slots, students: [],
+      }]);
+    } else {
+      if (nameChanged) renameCourseEverywhere(editingCourseName, trimmedName);
+      setCourses(prev => prev.map(c => c.name === editingCourseName ? {
+        ...c, name: trimmedName, classGroup: f.classGroup.trim(), criteriaType: f.criteriaType,
+        notenformat: f.notenformat, mitarbeit: mitarbeitNum, slots: f.slots,
+      } : c));
+    }
+    closeCourseEditor();
+  };
+
+  // Löscht nur den Kurs aus der Liste — vorhandene Beobachtungen, HA, Fehlzeiten
+  // etc. unter dem alten Namen bleiben in den Backups erhalten (dasselbe
+  // Prinzip wie bei "Kurs nicht gefunden": Daten hängen am Namen, nicht weg).
+  const deleteCourseConfirmed = () => {
+    setCourses(prev => prev.filter(c => c.name !== editingCourseName));
+    closeCourseEditor();
+  };
+
   // F13: Was „zurück" bedeutet, hängt davon ab, wo man steht. Das Stundenende
   // steht bewusst nicht in dieser Liste — es bleibt eine bewusste Entscheidung
   // und darf nie aus einer Handbewegung heraus passieren.
@@ -999,9 +1123,10 @@ function App() {
       setShowTests(false);  return true;
     }
     if (activeStudent)      { setActiveStudent(null);   return true; }
-    if (page === "logbook") { setPage("settings");      return true; }
+    if (page === "coursemgmt" && editingCourseName) { closeCourseEditor(); return true; }
+    if (page === "logbook" || page === "coursemgmt") { setPage("settings"); return true; }
     return false;
-  }, [infoCrit, showExport, showImport, showAttendance, showTests, testsOpenId, testsCourse, activeStudent, page]);
+  }, [infoCrit, showExport, showImport, showAttendance, showTests, testsOpenId, testsCourse, activeStudent, page, editingCourseName]);
 
   // Wischen nach rechts als Zurück. Bewusst nicht am Bildschirmrand: in der
   // installierten PWA wäre der Rand frei, im Safari-Tab läge dort die
@@ -1136,6 +1261,9 @@ function App() {
         if (!Array.isArray(c) || !Array.isArray(o) ||
             !h || typeof h !== "object" || !a || typeof a !== "object")
           throw new Error("Daten unvollständig oder beschädigt");
+        // Ein Backup von vor der Kursverwaltung kennt `slots` noch nicht — sonst
+        // verschwindet der Stundenplan beim Wiedereinspielen eines alten Backups.
+        const cWithSlots = c.map(co => ({ ...co, slots: co.slots || COURSES_META.find(m => m.name === co.name)?.slots || [] }));
 
         // Overwriting is irreversible and costs a whole term — always ask first.
         const stamp = (backup.exportDate || "").slice(0,10);
@@ -1145,7 +1273,7 @@ function App() {
           `Alle aktuellen Daten auf diesem Gerät werden dadurch ersetzt.`
         );
         if (!ok) return;
-        setCourses(c);
+        setCourses(cWithSlots);
         setObservations(o);
         setHomework(h);
         setAbsences(a);
@@ -1154,7 +1282,7 @@ function App() {
         setTests(tst);
         setHomeworkAssigned(hwa);
         setExcusedAbsences(exa);
-        saveData("obs_courses",      c);
+        saveData("obs_courses",      cWithSlots);
         saveData("obs_observations", o);
         saveData("obs_homework",     h);
         saveData("obs_absences",     a);
@@ -1310,7 +1438,7 @@ function App() {
   // ── RENDER: HOME ─────────────────────────────────────────────────────────
 
   const renderHome = () => {
-    const daySlots = SCHEDULE.filter(sl => sl.day === new Date().getDay());
+    const daySlots = getAllSlots().filter(sl => sl.day === new Date().getDay());
     return (
       <div style={S.page}>
         {backupDue && (
@@ -1338,7 +1466,7 @@ function App() {
         {daySlots.length > 0 && (
           <>
             <div style={S.sectionLbl}>Heute — {DAYS[new Date().getDay()]}</div>
-            {daySlots.filter(sl => sl !== currentSlot).map((sl,i) => (
+            {daySlots.filter(sl => !currentSlot || sl.course !== currentSlot.course || sl.start !== currentSlot.start).map((sl,i) => (
               <button key={i} style={{ ...S.courseCard(false), width:"100%", textAlign:"left", WebkitAppearance:"none" }}
                 onClick={() => startSession(sl.course)}>
                 <span style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -1346,7 +1474,7 @@ function App() {
                     <span style={{ display:"block", ...S.courseTitle, color:C.text }}>{sl.course}</span>
                     <span style={{ display:"block", ...S.courseMeta }}>{sl.start}–{sl.end} · {sl.type==="double"?"DS":"ES"}</span>
                   </span>
-                  {ENGLISH_COURSES.includes(sl.course) && <span style={S.badge("blue")}>FS</span>}
+                  {sl.criteriaType==="fremdsprachen" && <span style={S.badge("blue")}>FS</span>}
                 </span>
               </button>
             ))}
@@ -1361,7 +1489,7 @@ function App() {
         )}
 
         <div style={S.sectionLbl}>Alle Kurse</div>
-        {COURSES_META.filter(c => c.criteriaType !== "none").map((c,i) => (
+        {courses.filter(c => c.criteriaType !== "none").map((c,i) => (
           <button key={i} style={{ ...S.courseCard(false), width:"100%", textAlign:"left", WebkitAppearance:"none" }}
             onClick={() => startSession(c.name)}>
             <span style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -2307,17 +2435,160 @@ function App() {
                 + Schüler hinzufügen
               </button>
             )}
-            <button style={{ ...S.btnSm("ghost"), display:"flex", alignItems:"center", gap:6, width:"100%", justifyContent:"center", margin:"4px 0 12px" }}
+            <button style={{ ...S.btnSm("ghost"), display:"flex", alignItems:"center", gap:6, width:"100%", justifyContent:"center", margin:"4px 0 6px" }}
               onClick={() => { setActiveCourse(course.name); setImportText(""); setShowImport(true); }}>
               <Icon name="upload" size={13} color={C.textDim} /> Ganze Liste importieren
+            </button>
+            <button style={{ ...S.btnSm("ghost"), display:"flex", alignItems:"center", gap:6, width:"100%", justifyContent:"center", margin:"0 0 12px" }}
+              onClick={() => { setPage("coursemgmt"); openCourseEditor(course); }}>
+              <Icon name="settings" size={13} color={C.textDim} /> Kurs bearbeiten (Name, Bogen, Stundenplan)
             </button>
           </div>
           )}
         </div>
         );
       })}
+      <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
+        onClick={() => { setPage("coursemgmt"); openNewCourseEditor(); }}>
+        <Icon name="users" size={16} color={C.textDim} /> + Neuer Kurs
+      </button>
     </div>
   );
+
+  // ── RENDER: KURSVERWALTUNG ───────────────────────────────────────────────
+
+  const renderCourseManagement = () => {
+    if (courseForm) {
+      const f = courseForm;
+      const isNew = editingCourseName === "__new__";
+      const mitarbeitNum = Math.max(0, Math.min(100, Number(f.mitarbeit) || 0));
+      return (
+        <div style={S.page}>
+          <button style={{ background:"none", border:"none", color:C.accent, fontSize:15, fontWeight:600, cursor:"pointer", padding:0, marginBottom:12, WebkitAppearance:"none" }}
+            onClick={closeCourseEditor}>← Zurück</button>
+          <h2 style={{ fontSize:20, fontWeight:700, margin:"0 0 16px" }}>{isNew ? "Neuer Kurs" : "Kurs bearbeiten"}</h2>
+
+          <div style={S.sectionLbl}>Name</div>
+          <input value={f.name} onChange={e => setCourseForm(p => ({ ...p, name:e.target.value }))}
+            placeholder="z.B. 9b Englisch" {...inputFocus}
+            style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:6, boxSizing:"border-box" }} />
+          {!isNew && (
+            <p style={{ fontSize:13, color:C.textDim, marginBottom:14 }}>
+              Umbenennen verschiebt alle vorhandenen Beobachtungen, Hausaufgaben, Fehlzeiten, Material- und Test-Einträge automatisch mit auf den neuen Namen.
+            </p>
+          )}
+
+          <div style={S.sectionLbl}>Klasse/Gruppe (optional)</div>
+          <input value={f.classGroup} onChange={e => setCourseForm(p => ({ ...p, classGroup:e.target.value }))}
+            placeholder="z.B. 9b"
+            style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:14, boxSizing:"border-box" }} />
+
+          <div style={S.sectionLbl}>Bewertungsbogen</div>
+          <select value={f.criteriaType} onChange={e => setCourseForm(p => ({ ...p, criteriaType:e.target.value }))}
+            style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:14, boxSizing:"border-box" }}>
+            <option value="fremdsprachen">Fremdsprachen (9 Kriterien)</option>
+            <option value="general">Allgemein (8 Kriterien)</option>
+            <option value="none">Kein Bogen (nicht bewertet)</option>
+          </select>
+
+          <div style={S.sectionLbl}>Notenformat</div>
+          <select value={f.notenformat} onChange={e => setCourseForm(p => ({ ...p, notenformat:e.target.value }))}
+            style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:14, boxSizing:"border-box" }}>
+            <option value="drittelnoten">Noten (1–6)</option>
+            <option value="punkte">Notenpunkte (0–15, Oberstufe)</option>
+          </select>
+
+          <div style={S.sectionLbl}>Gewichtung Mitarbeit</div>
+          <input type="number" inputMode="numeric" min={0} max={100} value={f.mitarbeit}
+            onChange={e => setCourseForm(p => ({ ...p, mitarbeit:e.target.value }))}
+            style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:4, boxSizing:"border-box" }} />
+          <p style={{ fontSize:13, color:C.textDim, marginBottom:14 }}>
+            {mitarbeitNum}% mündliche Mitarbeit · {100 - mitarbeitNum}% schriftlich
+          </p>
+
+          <div style={S.sectionLbl}>Stundenplan-Termine</div>
+          {f.slots.length === 0 && (
+            <p style={{ fontSize:15, color:C.textMuted, marginBottom:8 }}>
+              Noch keine Termine — der Kurs taucht dann nicht unter „Heute" auf, nur unter „Alle Kurse".
+            </p>
+          )}
+          {f.slots.map((sl, i) => (
+            <div key={i} style={{ display:"flex", gap:6, alignItems:"center", marginBottom:8 }}>
+              <select value={sl.day} onChange={e => updateCourseSlot(i, "day", Number(e.target.value))}
+                style={{ flex:"1.3", padding:"10px 6px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:14, outline:"none" }}>
+                {[1,2,3,4,5].map(d => <option key={d} value={d}>{DAYS[d]}</option>)}
+              </select>
+              <input type="time" value={sl.start} onChange={e => updateCourseSlot(i, "start", e.target.value)}
+                style={{ flex:1, padding:"10px 4px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:14, outline:"none" }} />
+              <input type="time" value={sl.end} onChange={e => updateCourseSlot(i, "end", e.target.value)}
+                style={{ flex:1, padding:"10px 4px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:14, outline:"none" }} />
+              <select value={sl.type} onChange={e => updateCourseSlot(i, "type", e.target.value)}
+                style={{ flex:"1.1", padding:"10px 4px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontSize:14, outline:"none" }}>
+                <option value="double">DS</option>
+                <option value="single">ES</option>
+              </select>
+              <button aria-label="Termin entfernen" onClick={() => removeCourseSlot(i)}
+                style={{ background:"none", border:"none", cursor:"pointer", padding:8, flexShrink:0, WebkitAppearance:"none" }}>
+                <Icon name="x" size={14} color={C.textDim} />
+              </button>
+            </div>
+          ))}
+          <button style={{ background:"none", border:"none", color:C.accent, fontSize:15, fontWeight:600, padding:"8px 0", cursor:"pointer", WebkitAppearance:"none" }}
+            onClick={addCourseSlot}>
+            + Termin hinzufügen
+          </button>
+
+          <button style={{ ...S.btn("primary"), marginTop:20 }} onClick={saveCourseEditor}>Speichern</button>
+          <button style={S.btn("ghost")} onClick={closeCourseEditor}>Abbrechen</button>
+
+          {!isNew && (
+            confirmDeleteCourse ? (
+              <div style={{ ...S.critCard, marginTop:20, borderColor:C.red }}>
+                <p style={{ fontSize:15, color:C.text, marginBottom:10 }}>
+                  Kurs „{editingCourseName}" wirklich löschen? Vorhandene Beobachtungen, HA und Fehlzeiten bleiben
+                  gespeichert, tauchen aber nirgends mehr auf, solange kein Kurs mit demselben Namen existiert.
+                </p>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button style={{ ...S.btn("ghost"), borderColor:C.red, color:C.red, marginTop:0 }} onClick={deleteCourseConfirmed}>Löschen</button>
+                  <button style={{ ...S.btn("ghost"), marginTop:0 }} onClick={() => setConfirmDeleteCourse(false)}>Abbrechen</button>
+                </div>
+              </div>
+            ) : (
+              <button style={{ ...S.btn("ghost"), borderColor:C.red, color:C.red, marginTop:12 }}
+                onClick={() => setConfirmDeleteCourse(true)}>
+                Kurs löschen
+              </button>
+            )
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div style={S.page}>
+        <button style={{ background:"none", border:"none", color:C.accent, fontSize:15, fontWeight:600, cursor:"pointer", padding:0, marginBottom:12, WebkitAppearance:"none" }}
+          onClick={() => setPage("settings")}>← Zurück</button>
+        <h2 style={{ fontSize:20, fontWeight:700, margin:"0 0 16px" }}>Kursverwaltung</h2>
+        {courses.map(course => (
+          <button key={course.name} style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer", WebkitAppearance:"none" }}
+            onClick={() => openCourseEditor(course)}>
+            <span>
+              <span style={{ display:"block", fontSize:15, fontWeight:600, color:C.text }}>{course.name}</span>
+              <span style={{ display:"block", fontSize:13, color:C.textDim, marginTop:2 }}>
+                {course.criteriaType==="fremdsprachen" ? "Fremdsprachen" : course.criteriaType==="general" ? "Allgemein" : "Kein Bogen"}
+                {" · "}{course.notenformat==="punkte" ? "Punkte" : "Noten"}
+                {" · "}{(course.slots||[]).length} Termin{(course.slots||[]).length===1?"":"e"}
+              </span>
+            </span>
+          </button>
+        ))}
+        <button style={{ ...S.btn("primary"), display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginTop:10 }}
+          onClick={openNewCourseEditor}>
+          + Neuer Kurs
+        </button>
+      </div>
+    );
+  };
 
   // ── RENDER: OVERVIEW tab ─────────────────────────────────────────────────
 
@@ -2696,6 +2967,10 @@ function App() {
         onClick={() => { setShowTests(true); setTestsCourse(null); }}>
         <Icon name="chart" size={16} color={C.textDim} /> Tests (Vokabeltests, Klassenarbeiten…)
       </button>
+      <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginTop:8 }}
+        onClick={() => { setPage("coursemgmt"); closeCourseEditor(); }}>
+        <Icon name="settings" size={16} color={C.textDim} /> Kurse verwalten (anlegen, umbenennen, Stundenplan)
+      </button>
 
       <div style={S.sectionLbl}>CSV / PDF Export</div>
       <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
@@ -2731,7 +3006,7 @@ function App() {
         Ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} verschiedenen Tagen pro Schüler.<br/>
         Pädagogische Einschätzung der Lehrkraft entscheidet.<br/><br/>
         <strong style={{ color:C.text }}>Gewichtung (laufende Mitarbeit / schriftlich):</strong><br/>
-        {COURSES_META.filter(c => c.criteriaType !== "none").map(c => (
+        {courses.filter(c => c.criteriaType !== "none").map(c => (
           <span key={c.name}>
             {c.name} → {c.mitarbeit} / {100 - c.mitarbeit}
             {c.mitarbeit !== 60 && <span style={{ color:C.amber }}> ← abweichend</span>}
@@ -2848,7 +3123,7 @@ function App() {
               style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
                        borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:14,
                        boxSizing:"border-box" }} />
-            {COURSES_META.filter(c => c.criteriaType !== "none").map((c,i) => (
+            {courses.filter(c => c.criteriaType !== "none").map((c,i) => (
               <button key={i} style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer", WebkitAppearance:"none" }}
                 onClick={() => openBackfill(c.name, backfillDate)}>
                 <span style={{ ...S.courseTitle, color:C.text }}>{c.name}</span>
@@ -2925,7 +3200,7 @@ function App() {
           <div style={S.modalInner} onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>Tests</h3>
             <p style={{ fontSize:15, color:C.textDim, marginBottom:14 }}>Für welchen Kurs?</p>
-            {COURSES_META.filter(c => c.criteriaType !== "none").map((c,i) => (
+            {courses.filter(c => c.criteriaType !== "none").map((c,i) => (
               <button key={i} style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer", WebkitAppearance:"none" }}
                 onClick={() => openTests(c.name)}>
                 <span style={{ ...S.courseTitle, color:C.text }}>{c.name}</span>
@@ -3064,10 +3339,11 @@ function App() {
       </div>
 
       {/* Page content */}
-      {page==="home"     ? renderSession()  :
-       page==="students" ? renderStudents() :
-       page==="overview" ? renderOverview() :
-       page==="logbook"  ? renderLogbook()  :
+      {page==="home"       ? renderSession()          :
+       page==="students"   ? renderStudents()         :
+       page==="overview"   ? renderOverview()         :
+       page==="logbook"    ? renderLogbook()          :
+       page==="coursemgmt" ? renderCourseManagement() :
        renderSettings()}
 
       {/* Import modal */}
