@@ -433,7 +433,9 @@ def build_official_sheet(st, criteria, styles):
     ratio = pos / total if total else 0
     proposal = grade_proposal(total, MIN_DAYS, ratio, NOTENFORMAT,
                                st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
-    lehrkraft_note = f"{score_label(NOTENFORMAT)} {proposal['grade']}" if proposal else "noch nicht möglich"
+    # Nur "Punkte 12–15" zu drucken sagt niemandem etwas, der die Skala nicht
+    # auswendig kennt — das Wort dazu (aus GRADE_BANDS_*) gehört mit drauf.
+    lehrkraft_note = f"{score_label(NOTENFORMAT)} {proposal['grade']} ({proposal['label']})" if proposal else "noch nicht möglich"
 
     footer = Table([[
         Paragraph("Meine Noteneinschätzung: ____________", styles["footer_box"]),
