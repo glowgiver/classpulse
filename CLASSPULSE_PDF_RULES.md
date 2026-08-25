@@ -20,8 +20,20 @@ Das Blatt gilt für **alle** Kurstypen, auch Fremdsprachen (siehe unten).
 2. Claude Momentum-Chat öffnen
 3. Beide Dateien hochladen: `ClassPulse_Backup_DATUM.json` + `CLASSPULSE_PDF_RULES.md`
 4. Schreiben: „Erstell mir die ClassPulse PDF-Exports aus diesem Backup"
-5. Claude generiert: Klassenliste (intern) + eine Bogen-Seite pro Schüler (für Gespräche)
-6. PDF herunterladen — fertig für Zeugniskonferenz oder Elterngespräch
+5. **Claude zeigt zuerst eine Vorschau-Tabelle** (`preview_grades()`) — Name,
+   Einträge, rechnerischer Vorschlag pro Schüler. **Noch keine PDF, noch keine
+   Bögen.**
+6. Philipp sieht sich das an und sagt, wo er pädagogisch abweicht (`override_grade`)
+   und, falls schon bekannt (z.B. von IServ), die Selbsteinschätzung der Schüler
+   (`student_grade`) — beides pro Schüler in `STUDENTS` im Skript.
+7. Erst danach: Claude generiert die finalen Bögen — Klassenliste (intern,
+   zeigt Rechenwert *und* Anpassung nebeneinander) + eine Bogen-Seite pro
+   Schüler (zeigt nur das Endergebnis, sauber, ohne Rechenweg)
+8. PDF herunterladen — fertig für Zeugniskonferenz oder Elterngespräch
+
+**Schritt 5–6 nie überspringen** — sonst steht auf jedem Bogen „Über die
+Gewichtung der Kriterien entscheidet die Lehrkraft in pädagogischer
+Verantwortung", aber niemand hatte je die Gelegenheit, das auch zu tun.
 
 Der Python-Code für die Generierung liegt in `classpulse_export.py` im selben Repo —
 das Skript enthält Stichprobendaten als Vorlage; Claude ersetzt sie beim Export

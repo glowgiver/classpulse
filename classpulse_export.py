@@ -363,7 +363,12 @@ def build_overview(styles, criteria):
                 gesamt += f" ({proposal['punkte_exact']})"
         else:
             gesamt = "—"
-        gesamt_color = PRUSSIAN if proposal else GREY_TEXT
+        # Anders als auf der Schülerseite bleibt hier sichtbar, WENN pädagogisch
+        # angepasst wurde — diese Seite geht nie an Schüler raus, ist also der
+        # richtige Ort für den Rechenweg, nicht nur das Ergebnis.
+        if st.get("override_grade"):
+            gesamt = f"{st['override_grade']} (Vorschlag: {gesamt})" if proposal else st["override_grade"]
+        gesamt_color = PRUSSIAN if (proposal or st.get("override_grade")) else GREY_TEXT
 
         cells = [Paragraph(st["name"], styles["table_cell"])]
         for bereich in BEREICHE:
@@ -461,9 +466,17 @@ def build_official_sheet(st, criteria, styles):
     ratio = pos / total if total else 0
     proposal = grade_proposal(total, MIN_DAYS, ratio, NOTENFORMAT,
                                st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
-    # Nur "Punkte 12–15" zu drucken sagt niemandem etwas, der die Skala nicht
-    # auswendig kennt — das Wort dazu (aus GRADE_BANDS_*) gehört mit drauf.
-    if proposal:
+    # override_grade: das PÄDAGOGISCH entschiedene Ergebnis, nachdem die
+    # Lehrkraft die rechnerischen Vorschläge (siehe preview_grades()) gesehen
+    # und ggf. angepasst hat. Wenn gesetzt, geht es 1:1 auf den Bogen — der
+    # Rechenweg bleibt nur in der internen Klassenliste sichtbar, nicht hier,
+    # weil die Schülerseite ohnehin nur "die Einschätzung der Lehrkraft" zeigt,
+    # nicht wie sie zustande kam.
+    if st.get("override_grade"):
+        lehrkraft_note = st["override_grade"]
+    elif proposal:
+        # Nur "Punkte 12–15" zu drucken sagt niemandem etwas, der die Skala nicht
+        # auswendig kennt — das Wort dazu (aus GRADE_BANDS_*) gehört mit drauf.
         lehrkraft_note = f"{score_label(NOTENFORMAT)} {proposal['grade']} ({proposal['label']})"
         # Nur bei Notenpunkten: Notenpunkte werden am Ende als eine Zahl ins
         # Zeugnis eingetragen, deshalb zusätzlich ein rechnerischer Einzelwert
@@ -473,8 +486,14 @@ def build_official_sheet(st, criteria, styles):
     else:
         lehrkraft_note = "noch nicht möglich"
 
+    # student_grade: Selbsteinschätzung, z.B. digital über IServ eingesammelt
+    # und hier übertragen — dann muss die Zeile nicht mehr per Hand ausgefüllt
+    # werden. Leer gelassen bleibt sie eine echte Linie zum Selbst-Ausfüllen.
+    student_line = f"Meine Noteneinschätzung: {st['student_grade']}" if st.get("student_grade") \
+        else "Meine Noteneinschätzung: ____________"
+
     footer = Table([[
-        Paragraph("Meine Noteneinschätzung: ____________", styles["footer_box"]),
+        Paragraph(student_line, styles["footer_box"]),
         Paragraph(f"Note der Lehrkraft: {lehrkraft_note}", styles["footer_box"]),
     ]], colWidths=[85*mm, 90*mm])
     footer.setStyle(TableStyle([
@@ -531,4 +550,39 @@ def build_pdf(path):
     doc.build(story)
     print(f"✓ {path}")
 
-build_pdf("/home/claude/classpulse_v4.pdf")
+# ── VORSCHAU — vor build_pdf() aufrufen, NICHT überspringen ─────────────────
+# Zeigt, was jeder Schüler rechnerisch bekäme, BEVOR die Bögen als PDF
+# entstehen — der Moment, in dem die Lehrkraft laut eigener Ansage auf dem
+# Bogen ("Über die Gewichtung entscheidet die Lehrkraft in pädagogischer
+# Verantwortung") auch tatsächlich etwas entscheiden kann, statt dass der
+# Satz nur so dasteht. Zwei Felder pro Schüler in STUDENTS nehmen das Ergebnis
+# dieser Kontrolle auf:
+#   "override_grade": pädagogisch angepasstes Ergebnis, z.B. "Punkte 13"
+#                      oder "Note 2–3" — überschreibt den Rechenwert 1:1 auf
+#                      dem Bogen; leer/weggelassen = Rechenwert wird gedruckt.
+#   "student_grade":  Selbsteinschätzung der Schülerin/des Schülers, falls
+#                      schon bekannt (z.B. von IServ übertragen) — füllt die
+#                      "Meine Noteneinschätzung"-Zeile; leer = Zeile bleibt
+#                      blanko zum Selbst-Ausfüllen von Hand.
+def preview_grades(students, notenformat, criteria_type_label=""):
+    print(f"\n── Vorschau {criteria_type_label} ──".rstrip())
+    for st in students:
+        pos, neg = obs_ratio(st["observations"])
+        total = pos + neg
+        ratio = pos / total if total else 0
+        proposal = grade_proposal(total, MIN_DAYS, ratio, notenformat,
+                                   st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
+        if proposal:
+            rechnerisch = f"{score_label(notenformat)} {proposal['grade']} ({proposal['label']})"
+            if proposal["punkte_exact"] is not None:
+                rechnerisch += f" [{proposal['punkte_exact']}]"
+        else:
+            rechnerisch = "noch nicht möglich"
+        override = f"  →  ÜBERSCHRIEBEN MIT: {st['override_grade']}" if st.get("override_grade") else ""
+        selbst = f"  ·  Selbsteinschätzung: {st['student_grade']}" if st.get("student_grade") else ""
+        print(f"{st['name']:<28} {total:>2} Einträge   {rechnerisch}{override}{selbst}")
+    print()
+
+if __name__ == "__main__":
+    preview_grades(STUDENTS, NOTENFORMAT)
+    build_pdf("/home/claude/classpulse_v4.pdf")
