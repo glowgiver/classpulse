@@ -14,6 +14,32 @@ Das Blatt gilt für **alle** Kurstypen, auch Fremdsprachen (siehe unten).
 
 ---
 
+## Kurz vorm Quartal — so machst du's
+
+Wenn's soweit ist und die Kinder ihre Noteneinschätzung bekommen sollen:
+
+1. **Aktuelles Backup holen.** In der App: Mehr → „Backup herunterladen" —
+   den frischesten Stand, damit alles bis heute drin ist.
+2. **Falls vorhanden: Selbsteinschätzungen bereithalten.** Wenn Schüler
+   schon über IServ eingeschätzt haben, kurze Liste Name → Wert parat halten
+   (muss nicht formatiert sein, reicht als Stichpunkte).
+3. **Claude-Chat öffnen, beide Dateien hochladen** — `ClassPulse_Backup_DATUM.json`
+   + diese Datei hier.
+4. **Auftrag geben**, z.B.: „Erstell mir die ClassPulse PDF-Exports aus
+   diesem Backup für Jg8 History." (Pro Kurs einzeln — mehrere Kurse einfach
+   nacheinander fragen.)
+5. **Vorschau-Tabelle anschauen — noch kein PDF.** Claude zeigt erstmal nur
+   Name, Einträge, rechnerischer Vorschlag pro Schüler. Kein Bogen existiert noch.
+6. **Abweichungen und Selbsteinschätzungen durchgeben**, direkt im Chat, z.B.:
+   „Fenja auf Punkte 13 setzen, ihre Selbsteinschätzung war 11. Rest passt so."
+   Wer nicht erwähnt wird, bekommt den Rechenwert.
+7. **PDF generieren lassen und herunterladen.** Erst jetzt entstehen die
+   fertigen Bögen — Klassenliste intern (zeigt Rechenwert *und* Anpassung),
+   plus eine fertige Seite pro Schüler (nur das Endergebnis, sauber).
+8. **Austeilen bzw. weiterschicken** — Papier oder digital über IServ.
+
+---
+
 ## Workflow
 
 1. In der App: **Mehr → Backup herunterladen** (.json Datei)
