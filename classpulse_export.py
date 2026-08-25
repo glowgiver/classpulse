@@ -133,8 +133,19 @@ SHEET_BULLETS = {
 
 # ── SKALA (5 Spalten des Original-Blatts) — dieselben Schwellen wie der
 #    Notenvorschlag in der App (80/60/45/30%), nur ohne die unterste 15%-
-#    Trennung, weil hier nur 5 statt 6 Stufen zur Verfügung stehen. ──────────
-def scale_index(ratio):
+#    Trennung, weil hier nur 5 statt 6 Stufen zur Verfügung stehen.
+#    BEREICH_MIN_OBS: ohne Mindestmenge könnte ein einzelnes "+" am zweiten
+#    Schultag schon "in besonderem Maße" auslösen — dieselbe Sorte Fehler,
+#    vor der MIN_ENTRIES/MIN_DAYS beim Notenvorschlag schon schützt, hier nur
+#    pro Bereich statt für den ganzen Kurs. 4 ist eine eigene Setzung (nicht
+#    mit Philipp einzeln abgestimmt) — bei Bedarf anpassen. ──────────────────
+BEREICH_MIN_OBS = 4
+
+def scale_index(pos, neg):
+    total = pos + neg
+    if total < BEREICH_MIN_OBS:
+        return None
+    ratio = pos / total
     if ratio >= 0.80: return 4
     if ratio >= 0.60: return 3
     if ratio >= 0.45: return 2
@@ -378,8 +389,7 @@ def build_official_sheet(st, criteria, styles):
                                 else "SPRACHE UND KOMMUNIKATION", styles["area_label"]))
 
         pos, neg = section_counts(st["observations"], criteria, bereich)
-        total = pos + neg
-        idx = scale_index(pos / total) if total > 0 else None
+        idx = scale_index(pos, neg)
 
         col_w = [58*mm] + [23.4*mm]*5
         header_row = [Paragraph("Einschätzung der <b>Schülerin</b>/des <b>Schülers</b>", styles["table_header_sm"])] + \

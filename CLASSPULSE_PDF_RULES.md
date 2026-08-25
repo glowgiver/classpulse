@@ -175,20 +175,24 @@ Allgemein-Set fielen beide schon immer zusammen.
 ## Skala der Bereichs-Kreuze (5 Spalten)
 
 Dieselben Schwellen wie der Notenvorschlag (80/60/45/30%), nur ohne die unterste
-15%-Trennung, weil der Bogen 5 statt 6 Stufen hat:
+15%-Trennung, weil der Bogen 5 statt 6 Stufen hat. **Erst ab 4 Beobachtungen in
+diesem Bereich** — sonst könnte ein einzelnes "+" am zweiten Schultag schon
+„in besonderem Maße" auslösen. Dieselbe Schutzlogik wie MIN_ENTRIES/MIN_DAYS
+beim Notenvorschlag, hier nur pro Bereich statt für den ganzen Kurs (ein reiner
+Mengen-Cutoff, kein Tage-Cutoff — die Kriterien-Daten tragen hier kein Datum):
 
-| Ratio +/(+−) im Bereich | Spalte                     |
-|--------------------------|----------------------------|
-| ≥ 80%                    | in besonderem Maße         |
-| ≥ 60%                    | umfassend                  |
-| ≥ 45%                    | weitgehend                 |
-| ≥ 30%                    | in Grundzügen               |
-| < 30%                    | nicht oder nur in Ansätzen |
-| keine Beobachtung        | kein Kreuz                 |
+| Beobachtungen im Bereich | Ratio +/(+−)              | Spalte                     |
+|---------------------------|----------------------------|----------------------------|
+| < 4                        | —                          | kein Kreuz                 |
+| ≥ 4                        | ≥ 80%                      | in besonderem Maße         |
+| ≥ 4                        | ≥ 60%                      | umfassend                  |
+| ≥ 4                        | ≥ 45%                      | weitgehend                 |
+| ≥ 4                        | ≥ 30%                      | in Grundzügen               |
+| ≥ 4                        | < 30%                      | nicht oder nur in Ansätzen |
 
-Das ist ein neuer, eigenständiger Cutoff (nicht mit Philipp einzeln
-durchgesprochen) — beim ersten Einsatz gegenprüfen, ob die Fünfteilung zur
-tatsächlichen Einschätzung passt.
+Sowohl die 5er-Skala als auch die Mindestmenge (4) sind eigenständige Cutoffs
+(nicht mit Philipp einzeln durchgesprochen) — beim ersten Einsatz gegenprüfen,
+ob sie zur tatsächlichen Einschätzung passen.
 
 ---
 
