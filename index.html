@@ -1330,6 +1330,26 @@ function App() {
   const getBands = (courseName) => getNotenformat(courseName) === "punkte" ? BANDS_PUNKTE : BANDS_NOTEN;
   const getScoreLabel = (courseName) => getNotenformat(courseName) === "punkte" ? "Punkte" : "Note";
 
+  // Notenpunkte werden am Ende als eine Zahl ins Zeugnis eingetragen, nicht als
+  // Band — anders als Drittelnoten, wo "2+/2/2−" die Bandbreite schon ausdrückt.
+  // Rein interpolierte Zusatzangabe, nur für Punkte-Kurse: innerhalb des
+  // angezeigten (nach Korrektur!) Bands wird die Ratio auf dessen Punktspanne
+  // abgebildet, damit die Zahl nie außerhalb dessen liegt, was tatsächlich
+  // angezeigt wird. Spiegel von interpolate_punkte() in classpulse_export.py.
+  const PUNKTE_INTERP_BOUNDS = [
+    { ratioLo:0.80, ratioHi:1.00, ptsLo:12, ptsHi:15 },
+    { ratioLo:0.60, ratioHi:0.80, ptsLo: 9, ptsHi:11 },
+    { ratioLo:0.45, ratioHi:0.60, ptsLo: 7, ptsHi: 8 },
+    { ratioLo:0.30, ratioHi:0.45, ptsLo: 5, ptsHi: 6 },
+    { ratioLo:0.15, ratioHi:0.30, ptsLo: 2, ptsHi: 4 },
+    { ratioLo:0.00, ratioHi:0.15, ptsLo: 0, ptsHi: 1 },
+  ];
+  const interpolatePunkte = (ratio, bandIndex) => {
+    const b = PUNKTE_INTERP_BOUNDS[bandIndex];
+    const r = Math.min(Math.max(ratio, b.ratioLo), b.ratioHi);
+    return Math.round(b.ptsLo + (r - b.ratioLo) / (b.ratioHi - b.ratioLo) * (b.ptsHi - b.ptsLo));
+  };
+
   // Vokabeltests/Klassenarbeiten: erst ab 2 Einträgen zählt der Schnitt.
   const TEST_MIN_COUNT = 2;
   // HA-Quote: erst ab 6 Kontrollen, unter 80% eine Zeile runter, nie hoch.
@@ -1420,12 +1440,14 @@ function App() {
     const bands      = getBands(courseName);
     const correction = getGradeCorrection(courseName, studentId);
     const finalIndex = Math.max(0, Math.min(5, baseIndex + correction.net));
+    const punkteExact = getNotenformat(courseName) === "punkte" ? interpolatePunkte(ratio, finalIndex) : null;
 
     return {
       ...bands[finalIndex],
       base: bands[baseIndex],
       correction,
       corrected: finalIndex !== baseIndex,
+      punkteExact,
     };
   };
 
@@ -1940,7 +1962,10 @@ function App() {
               <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:10, padding:"12px 14px", marginTop:20 }}>
                 <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:6 }}>NOTENVORSCHLAG</div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                  <span style={{ fontSize:17, fontWeight:700, color:grade.color }}>{getScoreLabel(activeCourse)} {grade.grade}</span>
+                  <span style={{ fontSize:17, fontWeight:700, color:grade.color }}>
+                    {getScoreLabel(activeCourse)} {grade.grade}
+                    {grade.punkteExact !== null && <span style={{ fontSize:13, fontWeight:600, color:C.textDim }}> · rechnerisch: {grade.punkteExact}</span>}
+                  </span>
                   <span style={{ fontSize:13, color:C.textDim }}>{grade.label}</span>
                 </div>
                 {critTendencies.map(t => (
@@ -2683,7 +2708,7 @@ function App() {
                       {grade ? (
                         gradesVisible ? (
                           <span style={{ fontSize:13, fontWeight:700, color:grade.color, minWidth:52, textAlign:"right" }}>
-                            {getScoreLabel(course.name)} {grade.grade}
+                            {getScoreLabel(course.name)} {grade.grade}{grade.punkteExact !== null ? ` (${grade.punkteExact})` : ""}
                           </span>
                         ) : (
                           <span style={{ fontSize:13, fontWeight:700, color:C.textMuted, minWidth:52, textAlign:"right", letterSpacing:"0.1em" }}>

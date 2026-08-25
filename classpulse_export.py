@@ -172,6 +172,27 @@ GRADE_BANDS_PUNKTE = [
 ]
 MIN_ENTRIES, MIN_DAYS = 6, 3
 
+# Notenpunkte werden am Ende als eine Zahl ins Zeugnis eingetragen, nicht als
+# Band — anders als Drittelnoten, wo "2+/2/2−" die Bandbreite schon ausdrückt.
+# Rein interpolierte Zusatzangabe, NUR für notenformat "punkte": innerhalb des
+# angezeigten Bands (nach Korrektur!) wird die Ratio auf die Punktspanne des
+# Bands abgebildet — nicht das Basis-Band, damit die Zahl nie außerhalb dessen
+# liegt, was tatsächlich gedruckt steht. (ratio_lo, ratio_hi, punkte_lo, punkte_hi),
+# dieselbe Reihenfolge wie GRADE_BANDS_PUNKTE/base_band_index.
+PUNKTE_INTERP_BOUNDS = [
+    (0.80, 1.00, 12, 15),
+    (0.60, 0.80,  9, 11),
+    (0.45, 0.60,  7,  8),
+    (0.30, 0.45,  5,  6),
+    (0.15, 0.30,  2,  4),
+    (0.00, 0.15,  0,  1),
+]
+
+def interpolate_punkte(ratio, band_idx):
+    lo_r, hi_r, lo_p, hi_p = PUNKTE_INTERP_BOUNDS[band_idx]
+    r = min(max(ratio, lo_r), hi_r)
+    return round(lo_p + (r - lo_r) / (hi_r - lo_r) * (hi_p - lo_p))
+
 def base_band_index(ratio):
     if ratio >= 0.80: return 0
     if ratio >= 0.60: return 1
@@ -204,8 +225,10 @@ def grade_proposal(entry_count, day_count, ratio, notenformat, test_avg=None, hw
     base_idx = base_band_index(ratio)
     net = max(-1, min(1, test_delta(test_avg, notenformat) + hw_delta(hw_quote) + material_delta(mat_quote)))
     final_idx = max(0, min(5, base_idx + net))
+    punkte_exact = interpolate_punkte(ratio, final_idx) if notenformat == "punkte" else None
     return {"grade": bands[final_idx][0], "label": bands[final_idx][1],
-            "base_grade": bands[base_idx][0], "corrected": final_idx != base_idx}
+            "base_grade": bands[base_idx][0], "corrected": final_idx != base_idx,
+            "punkte_exact": punkte_exact}
 
 def score_label(notenformat):
     return "Punkte" if notenformat == "punkte" else "Note"
@@ -334,7 +357,12 @@ def build_overview(styles, criteria):
         ratio = pos / total if total else 0
         proposal = grade_proposal(entry_count, days, ratio, NOTENFORMAT,
                                    st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
-        gesamt = f"{score_label(NOTENFORMAT)} {proposal['grade']}" if proposal else "—"
+        if proposal:
+            gesamt = f"{score_label(NOTENFORMAT)} {proposal['grade']}"
+            if proposal["punkte_exact"] is not None:
+                gesamt += f" ({proposal['punkte_exact']})"
+        else:
+            gesamt = "—"
         gesamt_color = PRUSSIAN if proposal else GREY_TEXT
 
         cells = [Paragraph(st["name"], styles["table_cell"])]
@@ -435,7 +463,15 @@ def build_official_sheet(st, criteria, styles):
                                st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
     # Nur "Punkte 12–15" zu drucken sagt niemandem etwas, der die Skala nicht
     # auswendig kennt — das Wort dazu (aus GRADE_BANDS_*) gehört mit drauf.
-    lehrkraft_note = f"{score_label(NOTENFORMAT)} {proposal['grade']} ({proposal['label']})" if proposal else "noch nicht möglich"
+    if proposal:
+        lehrkraft_note = f"{score_label(NOTENFORMAT)} {proposal['grade']} ({proposal['label']})"
+        # Nur bei Notenpunkten: Notenpunkte werden am Ende als eine Zahl ins
+        # Zeugnis eingetragen, deshalb zusätzlich ein rechnerischer Einzelwert
+        # innerhalb des Bands — bei Drittelnoten gibt es diese Erwartung nicht.
+        if proposal["punkte_exact"] is not None:
+            lehrkraft_note += f" · rechnerisch: {proposal['punkte_exact']}"
+    else:
+        lehrkraft_note = "noch nicht möglich"
 
     footer = Table([[
         Paragraph("Meine Noteneinschätzung: ____________", styles["footer_box"]),
