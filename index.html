@@ -1614,7 +1614,10 @@ function App() {
         <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em" }}>{activeCourse}</div>
         <h2 style={{ fontSize:20, fontWeight:700, margin:"6px 0 10px" }}>Wer fehlt heute?</h2>
         {renderPhaseSteps()}
-        <p style={{ fontSize:15, color:C.textDim, marginBottom:16 }}>Antippen = fehlt · nochmal = wieder da</p>
+        <p style={{ fontSize:15, color:C.textDim, marginBottom:4 }}>Antippen = fehlt · nochmal = wieder da</p>
+        <p style={{ fontSize:13, color:C.textMuted, marginBottom:16 }}>
+          Kommt später noch wer rein? Das trägst du während der Stunde beim Beobachten nach, über „· ändern" oben.
+        </p>
 
         {course.students.length === 0 && (
           <div style={{ background:C.amberSoft, border:`1px solid ${C.amber}`, borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
