@@ -253,7 +253,7 @@ const migrateCourseNames = () => {
     // only, since course names may contain further underscores.
     // obs_topics belongs in this list too — it uses the same key scheme and was
     // simply missed when this migration was first written for the Jg8/Jg9 rename.
-    ["obs_homework", "obs_absences", "obs_materials", "obs_homeworkAssigned", "obs_excusedAbsences", "obs_topics"].forEach(key => {
+    ["obs_homework", "obs_absences", "obs_materials", "obs_homeworkAssigned", "obs_excusedAbsences", "obs_topics", "obs_lateArrivals"].forEach(key => {
       const val = loadData(key, null);
       if (!val) return;
       const out = {};
@@ -449,6 +449,11 @@ function App() {
   // soll. Gleiches Schlüsselschema "YYYY-MM-DD_Kursname" → [studentId, ...],
   // nur relevant für IDs, die an diesem Tag auch in `absences` stehen.
   const [excusedAbsences, setExcusedAbsences] = useState(() => loadData("obs_excusedAbsences", {}));
+  // Verspätet ankommen ist kein Fehlen — der Nachzügler war ja da, nur nicht
+  // von Anfang an. Bisher verschwand das spurlos, sobald man ihn von "fehlt"
+  // zurück auf "da" tippte. Eigener Zweig, gleiches Schlüsselschema, damit ein
+  // Muster über die Zeit sichtbar bleibt statt jedes Mal neu vergessen zu werden.
+  const [lateArrivals, setLateArrivals] = useState(() => loadData("obs_lateArrivals", {}));
   // Lesson topic per course and day, same "YYYY-MM-DD_Kursname" key as the two above.
   const [topics,       setTopics]       = useState(() => loadData("obs_topics", {}));
   // Was für die nächste Stunde aufgegeben wurde — nicht zu verwechseln mit
@@ -705,6 +710,7 @@ function App() {
   useEffect(() => saveData("obs_homework",     homework),     [homework]);
   useEffect(() => saveData("obs_absences",     absences),     [absences]);
   useEffect(() => saveData("obs_excusedAbsences", excusedAbsences), [excusedAbsences]);
+  useEffect(() => saveData("obs_lateArrivals",    lateArrivals),    [lateArrivals]);
   useEffect(() => saveData("obs_topics",       topics),       [topics]);
   useEffect(() => saveData("obs_homeworkAssigned", homeworkAssigned), [homeworkAssigned]);
   useEffect(() => saveData("obs_materials",    materials),    [materials]);
@@ -831,22 +837,35 @@ function App() {
   // Nachzügler waren nicht nachtragbar: die Anwesenheit wurde einmal in Phase 1
   // erfasst, danach führte nur das ✕ heraus. Sie ist aber ein Zustand und muss
   // deshalb während der ganzen Stunde erreichbar bleiben.
+  //
+  // Zyklus: da → fehlt → verspätet → da. Verspätet zählt als anwesend (raus aus
+  // todayAbsent, sichtbar/beobachtbar), behält aber einen Nachweis — bisher
+  // verschwand ein Nachzügler spurlos, sobald man ihn direkt zurück auf "da" tippte.
   const toggleAbsentToday = (studentId) => {
     const key     = `${today}_${activeCourse}`;
     const course  = courses.find(c => c.name === activeCourse);
     const stName  = course?.students.find(st => st.id === studentId)?.name.split(" ")[0] || "?";
     const wasAbsent = (absences[key] || []).includes(studentId);
-    const apply = (absent) => {
+    const wasLate   = (lateArrivals[key] || []).includes(studentId);
+    const prevState = wasAbsent ? "fehlt" : wasLate ? "verspaetet" : "da";
+    const nextState = prevState === "da" ? "fehlt" : prevState === "fehlt" ? "verspaetet" : "da";
+
+    const apply = (state) => {
       setAbsences(prev => {
         const cur = prev[key] || [];
-        return { ...prev, [key]: absent ? [...new Set([...cur, studentId])] : cur.filter(i => i !== studentId) };
+        return { ...prev, [key]: state === "fehlt" ? [...new Set([...cur, studentId])] : cur.filter(i => i !== studentId) };
       });
-      setTodayAbsent(prev => absent ? [...new Set([...prev, studentId])] : prev.filter(i => i !== studentId));
+      setLateArrivals(prev => {
+        const cur = prev[key] || [];
+        return { ...prev, [key]: state === "verspaetet" ? [...new Set([...cur, studentId])] : cur.filter(i => i !== studentId) };
+      });
+      setTodayAbsent(prev => state === "fehlt" ? [...new Set([...prev, studentId])] : prev.filter(i => i !== studentId));
     };
-    apply(!wasAbsent);
+    apply(nextState);
+    const label = nextState === "fehlt" ? "fehlt" : nextState === "verspaetet" ? "verspätet" : "wieder da";
     registerUndo(
-      wasAbsent ? `${stName}: wieder anwesend` : `${stName}: fehlt`,
-      () => apply(wasAbsent)
+      `${stName}: ${label}`,
+      () => apply(prevState)
     );
   };
 
@@ -1070,6 +1089,7 @@ function App() {
     setHomeworkAssigned(prev => remapKeyed(prev));
     setExcusedAbsences(prev => remapKeyed(prev));
     setTopics(prev => remapKeyed(prev));
+    setLateArrivals(prev => remapKeyed(prev));
     if (activeCourse === oldName) setActiveCourse(newName);
   };
 
@@ -1168,7 +1188,7 @@ function App() {
   // Eine Quelle, ein Trennzeichen.
   const courseCsvBlock = (course) => {
     const criteria = getCriteria(course.name);
-    const lines = [`Name;${criteria.map(c => c.short).join(";")};HA-Quote;Material-Quote;Test-Ø;Fehltage;davon unentschuldigt;Gesamt`];
+    const lines = [`Name;${criteria.map(c => c.short).join(";")};HA-Quote;Material-Quote;Test-Ø;Fehltage;davon unentschuldigt;Verspätungen;Gesamt`];
     course.students.forEach(st => {
       const obs = obsFor(course.name, st.id);
       const critSummary = criteria.map(crit => {
@@ -1188,7 +1208,11 @@ function App() {
         absentCount++;
         if (!(excusedAbsences[key] || []).includes(st.id)) unexcusedCount++;
       });
-      lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${matPct};${testStr};${absentCount};${unexcusedCount};${obs.length}`);
+      let lateCount = 0;
+      Object.entries(lateArrivals).forEach(([key, ids]) => {
+        if (key.endsWith(`_${course.name}`) && ids.includes(st.id)) lateCount++;
+      });
+      lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${matPct};${testStr};${absentCount};${unexcusedCount};${lateCount};${obs.length}`);
     });
     return lines;
   };
@@ -1221,7 +1245,7 @@ function App() {
   };
 
   const downloadBackup = (filenamePrefix) => {
-    const data = { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences };
+    const data = { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences, lateArrivals };
     const backup = {
       version: "1.0",
       exportDate: new Date().toISOString(),
@@ -1258,6 +1282,7 @@ function App() {
         const tst = Array.isArray(backup.data.tests) ? backup.data.tests : [];
         const hwa = backup.data.homeworkAssigned && typeof backup.data.homeworkAssigned === "object" ? backup.data.homeworkAssigned : {};
         const exa = backup.data.excusedAbsences  && typeof backup.data.excusedAbsences  === "object" ? backup.data.excusedAbsences  : {};
+        const lta = backup.data.lateArrivals     && typeof backup.data.lateArrivals     === "object" ? backup.data.lateArrivals     : {};
         if (!Array.isArray(c) || !Array.isArray(o) ||
             !h || typeof h !== "object" || !a || typeof a !== "object")
           throw new Error("Daten unvollständig oder beschädigt");
@@ -1282,6 +1307,7 @@ function App() {
         setTests(tst);
         setHomeworkAssigned(hwa);
         setExcusedAbsences(exa);
+        setLateArrivals(lta);
         saveData("obs_courses",      cWithSlots);
         saveData("obs_observations", o);
         saveData("obs_homework",     h);
@@ -1291,6 +1317,7 @@ function App() {
         saveData("obs_tests",        tst);
         saveData("obs_homeworkAssigned", hwa);
         saveData("obs_excusedAbsences",  exa);
+        saveData("obs_lateArrivals",     lta);
         setBackupImportOK(true);
         setBackupError("");
         setTimeout(() => setBackupImportOK(false), 3000);
@@ -2791,7 +2818,7 @@ function App() {
   const renderLogbook = () => {
     // A lesson counts as held if anything at all was recorded for it.
     const keys = new Set([
-      ...Object.keys(topics), ...Object.keys(absences), ...Object.keys(homework),
+      ...Object.keys(topics), ...Object.keys(absences), ...Object.keys(homework), ...Object.keys(lateArrivals),
       ...Object.keys(homeworkAssigned),
       ...observations.map(o => `${o.date}_${o.course}`),
     ]);
@@ -2808,10 +2835,13 @@ function App() {
           return excusedIds.includes(id) ? `${name} (entschuldigt)` : name;
         })
         .filter(Boolean);
+      const lateNames = (lateArrivals[k] || [])
+        .map(id => c?.students.find(s => s.id === id)?.name)
+        .filter(Boolean);
       const hw = homework[k];
       const missing = hw ? Object.values(hw).filter(v => v !== "done").length : 0;
       return {
-        key:k, date, course, topic: topics[k] || "", absentNames,
+        key:k, date, course, topic: topics[k] || "", absentNames, lateNames,
         hwText: !hw ? null : missing === 0 ? "HA vollständig" : `HA: ${missing}× unvollständig`,
         hwNextText: homeworkAssigned[k] || "",
         obsCount: observations.filter(o => o.date === date && o.course === course && isRating(o)).length,
@@ -2900,6 +2930,11 @@ function App() {
                   {r.absentNames.length ? `Fehlend: ${r.absentNames.join(", ")}` : "Vollzählig"}
                   {r.hwText ? ` · ${r.hwText}` : ""}
                 </div>
+                {r.lateNames.length > 0 && (
+                  <div style={{ fontSize:13, color:C.amber }}>
+                    Verspätet: {r.lateNames.join(", ")}
+                  </div>
+                )}
                 {r.hwNextText && (
                   <div style={{ fontSize:13, color:C.textDim, marginTop:2 }}>
                     HA für nächstes Mal: {r.hwNextText}
@@ -3008,7 +3043,7 @@ function App() {
         onClick={() => {
           if (window.confirm("Wirklich ALLE Daten löschen? Dies kann nicht rückgängig gemacht werden.")) {
             ["obs_courses","obs_observations","obs_homework","obs_absences","obs_topics",
-             "obs_materials","obs_tests","obs_homeworkAssigned","obs_excusedAbsences",
+             "obs_materials","obs_tests","obs_homeworkAssigned","obs_excusedAbsences","obs_lateArrivals",
              "obs_session","obs_lastAutoBackup","obs_nextAutoBackupDays"].forEach(k => localStorage.removeItem(k));
             window.location.reload();
           }
@@ -3100,24 +3135,28 @@ function App() {
     const course = courses.find(c => c.name === activeCourse);
     if (!course) return null;
     const absentIds = absences[`${today}_${activeCourse}`] || [];
+    const lateIds   = lateArrivals[`${today}_${activeCourse}`] || [];
     return (
       <div style={S.modal} onClick={() => setShowAttendance(false)}>
         <div style={S.modalInner} onClick={e => e.stopPropagation()}>
           <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>Anwesenheit</h3>
           <p style={{ fontSize:15, color:C.textDim, marginBottom:14 }}>
-            {activeCourse} · Antippen = fehlt, nochmal = wieder da
+            {activeCourse} · Antippen = fehlt, nochmal = verspätet, nochmal = wieder da
           </p>
           {course.students.map(st => {
             const absent = absentIds.includes(st.id);
+            const late   = !absent && lateIds.includes(st.id);
+            const color  = absent ? C.red : late ? C.amber : C.text;
+            const bg     = absent ? C.redSoft : late ? C.amberSoft : C.card;
+            const border = absent ? C.red : late ? C.amber : C.border;
+            const label  = absent ? "fehlt" : late ? "verspätet" : "da";
             return (
               <button key={st.id} onClick={() => toggleAbsentToday(st.id)}
                 style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer",
-                         WebkitAppearance:"none",
-                         background: absent ? C.redSoft : C.card,
-                         borderColor: absent ? C.red : C.border }}>
-                <span style={{ fontSize:15, fontWeight:500, color: absent ? C.red : C.text }}>{st.name}</span>
-                <span style={{ fontSize:13, fontWeight:700, color: absent ? C.red : C.textDim }}>
-                  {absent ? "fehlt" : "da"}
+                         WebkitAppearance:"none", background: bg, borderColor: border }}>
+                <span style={{ fontSize:15, fontWeight:500, color: absent || late ? color : C.text }}>{st.name}</span>
+                <span style={{ fontSize:13, fontWeight:700, color: absent || late ? color : C.textDim }}>
+                  {label}
                 </span>
               </button>
             );
