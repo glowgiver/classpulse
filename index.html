@@ -253,7 +253,7 @@ const migrateCourseNames = () => {
     // only, since course names may contain further underscores.
     // obs_topics belongs in this list too — it uses the same key scheme and was
     // simply missed when this migration was first written for the Jg8/Jg9 rename.
-    ["obs_homework", "obs_absences", "obs_materials", "obs_homeworkAssigned", "obs_excusedAbsences", "obs_topics", "obs_lateArrivals"].forEach(key => {
+    ["obs_homework", "obs_absences", "obs_materials", "obs_homeworkAssigned", "obs_excusedAbsences", "obs_excusedMaterial", "obs_topics", "obs_lateArrivals"].forEach(key => {
       const val = loadData(key, null);
       if (!val) return;
       const out = {};
@@ -449,6 +449,12 @@ function App() {
   // soll. Gleiches Schlüsselschema "YYYY-MM-DD_Kursname" → [studentId, ...],
   // nur relevant für IDs, die an diesem Tag auch in `absences` stehen.
   const [excusedAbsences, setExcusedAbsences] = useState(() => loadData("obs_excusedAbsences", {}));
+  // Wer für vergessenes Material entschuldigt ist — gleiches Prinzip wie
+  // excusedAbsences: das Material fehlte live in der Stunde und wurde dort
+  // erfasst, die plausible Entschuldigung kommt aber oft erst Tage später
+  // (z.B. über die Mutter) nach. Ein entschuldigter Eintrag zählt nicht mehr
+  // gegen die Material-Quote, die sonst den Notenvorschlag senken kann.
+  const [excusedMaterial, setExcusedMaterial] = useState(() => loadData("obs_excusedMaterial", {}));
   // Verspätet ankommen ist kein Fehlen — der Nachzügler war ja da, nur nicht
   // von Anfang an. Bisher verschwand das spurlos, sobald man ihn von "fehlt"
   // zurück auf "da" tippte. Eigener Zweig, gleiches Schlüsselschema, damit ein
@@ -513,6 +519,7 @@ function App() {
   const [backfillDate,   setBackfillDate]   = useState("");
   const [backfillAbsent, setBackfillAbsent] = useState([]);
   const [backfillExcused, setBackfillExcused] = useState([]);
+  const [backfillExcusedMaterial, setBackfillExcusedMaterial] = useState([]);
   const [backfillTopic,  setBackfillTopic]  = useState("");
   const [backfillHwNext, setBackfillHwNext] = useState("");
 
@@ -596,6 +603,7 @@ function App() {
     setBackfillDate(date);
     setBackfillAbsent(absences[key] || []);
     setBackfillExcused(excusedAbsences[key] || []);
+    setBackfillExcusedMaterial(excusedMaterial[key] || []);
     setBackfillTopic(topics[key] || "");
     setBackfillHwNext(homeworkAssigned[key] || "");
   };
@@ -611,11 +619,20 @@ function App() {
     setBackfillExcused(prev => prev.includes(studentId) ? prev.filter(i => i !== studentId) : [...prev, studentId]);
   };
 
+  // Material entschuldigen — gleiches Muster wie Fehlstunden entschuldigen,
+  // aber für die Mat.-Markierung, die live in der Stunde gesetzt wurde.
+  const toggleBackfillExcusedMaterial = (studentId) => {
+    setBackfillExcusedMaterial(prev => prev.includes(studentId) ? prev.filter(i => i !== studentId) : [...prev, studentId]);
+  };
+
   const saveBackfill = () => {
     const key = `${backfillDate}_${backfillCourse}`;
     setAbsences(prev => ({ ...prev, [key]: backfillAbsent }));
     // Entschuldigt kann nur bleiben, wer auch tatsächlich (noch) als fehlend markiert ist.
     setExcusedAbsences(prev => ({ ...prev, [key]: backfillExcused.filter(id => backfillAbsent.includes(id)) }));
+    // Entschuldigt kann nur bleiben, wer an diesem Tag tatsächlich als "Material fehlt" erfasst ist.
+    const missingIds = Object.entries(materials[key] || {}).filter(([,v]) => v === "missing").map(([id]) => id);
+    setExcusedMaterial(prev => ({ ...prev, [key]: backfillExcusedMaterial.filter(id => missingIds.includes(id)) }));
     setTopics(prev => {
       const next = { ...prev };
       if (backfillTopic.trim()) next[key] = backfillTopic.trim(); else delete next[key];
@@ -710,6 +727,7 @@ function App() {
   useEffect(() => saveData("obs_homework",     homework),     [homework]);
   useEffect(() => saveData("obs_absences",     absences),     [absences]);
   useEffect(() => saveData("obs_excusedAbsences", excusedAbsences), [excusedAbsences]);
+  useEffect(() => saveData("obs_excusedMaterial", excusedMaterial), [excusedMaterial]);
   useEffect(() => saveData("obs_lateArrivals",    lateArrivals),    [lateArrivals]);
   useEffect(() => saveData("obs_topics",       topics),       [topics]);
   useEffect(() => saveData("obs_homeworkAssigned", homeworkAssigned), [homeworkAssigned]);
@@ -1088,6 +1106,7 @@ function App() {
     setMaterials(prev => remapKeyed(prev));
     setHomeworkAssigned(prev => remapKeyed(prev));
     setExcusedAbsences(prev => remapKeyed(prev));
+    setExcusedMaterial(prev => remapKeyed(prev));
     setTopics(prev => remapKeyed(prev));
     setLateArrivals(prev => remapKeyed(prev));
     if (activeCourse === oldName) setActiveCourse(newName);
@@ -1188,7 +1207,7 @@ function App() {
   // Eine Quelle, ein Trennzeichen.
   const courseCsvBlock = (course) => {
     const criteria = getCriteria(course.name);
-    const lines = [`Name;${criteria.map(c => c.short).join(";")};HA-Quote;Material-Quote;Test-Ø;Fehltage;davon unentschuldigt;Verspätungen;Gesamt`];
+    const lines = [`Name;${criteria.map(c => c.short).join(";")};HA-Quote;Material-Quote;davon entschuldigt;Test-Ø;Fehltage;davon unentschuldigt;Verspätungen;Gesamt`];
     course.students.forEach(st => {
       const obs = obsFor(course.name, st.id);
       const critSummary = criteria.map(crit => {
@@ -1197,9 +1216,14 @@ function App() {
         return (pos === 0 && neg === 0) ? "-" : `+${pos}/-${neg}`;
       });
       const hwQ  = getQuote(homework,  course.name, st.id, s => s==="done" ? 1 : s==="half" ? 0.5 : 0);
-      const matQ = getQuote(materials, course.name, st.id, s => s==="here" ? 1 : 0);
+      const matQ = getQuote(materials, course.name, st.id, s => s==="here" ? 1 : 0, isMaterialExcused);
       const hwPct  = hwQ.count  > 0 ? `${Math.round(hwQ.quote*100)}%`  : "-";
       const matPct = matQ.count > 0 ? `${Math.round(matQ.quote*100)}%` : "-";
+      let excusedMatCount = 0;
+      Object.entries(materials).forEach(([key, record]) => {
+        if (!key.endsWith(`_${course.name}`) || record[st.id] !== "missing") return;
+        if (isMaterialExcused(key, st.id)) excusedMatCount++;
+      });
       const testAvg = getTestAverage(course.name, st.id);
       const testStr = testAvg ? `${Math.round(testAvg.avg*10)/10}` : "-";
       let absentCount = 0, unexcusedCount = 0;
@@ -1212,7 +1236,7 @@ function App() {
       Object.entries(lateArrivals).forEach(([key, ids]) => {
         if (key.endsWith(`_${course.name}`) && ids.includes(st.id)) lateCount++;
       });
-      lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${matPct};${testStr};${absentCount};${unexcusedCount};${lateCount};${obs.length}`);
+      lines.push(`"${st.name}";${critSummary.join(";")};${hwPct};${matPct};${excusedMatCount};${testStr};${absentCount};${unexcusedCount};${lateCount};${obs.length}`);
     });
     return lines;
   };
@@ -1245,7 +1269,7 @@ function App() {
   };
 
   const downloadBackup = (filenamePrefix) => {
-    const data = { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences, lateArrivals };
+    const data = { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences, excusedMaterial, lateArrivals };
     const backup = {
       version: "1.0",
       exportDate: new Date().toISOString(),
@@ -1282,6 +1306,7 @@ function App() {
         const tst = Array.isArray(backup.data.tests) ? backup.data.tests : [];
         const hwa = backup.data.homeworkAssigned && typeof backup.data.homeworkAssigned === "object" ? backup.data.homeworkAssigned : {};
         const exa = backup.data.excusedAbsences  && typeof backup.data.excusedAbsences  === "object" ? backup.data.excusedAbsences  : {};
+        const exm = backup.data.excusedMaterial  && typeof backup.data.excusedMaterial  === "object" ? backup.data.excusedMaterial  : {};
         const lta = backup.data.lateArrivals     && typeof backup.data.lateArrivals     === "object" ? backup.data.lateArrivals     : {};
         if (!Array.isArray(c) || !Array.isArray(o) ||
             !h || typeof h !== "object" || !a || typeof a !== "object")
@@ -1307,6 +1332,7 @@ function App() {
         setTests(tst);
         setHomeworkAssigned(hwa);
         setExcusedAbsences(exa);
+        setExcusedMaterial(exm);
         setLateArrivals(lta);
         saveData("obs_courses",      cWithSlots);
         saveData("obs_observations", o);
@@ -1317,6 +1343,7 @@ function App() {
         saveData("obs_tests",        tst);
         saveData("obs_homeworkAssigned", hwa);
         saveData("obs_excusedAbsences",  exa);
+        saveData("obs_excusedMaterial",  exm);
         saveData("obs_lateArrivals",     lta);
         setBackupImportOK(true);
         setBackupError("");
@@ -1389,18 +1416,24 @@ function App() {
 
   // homework/materials sind "YYYY-MM-DD_Kursname" → {studentId: status}.
   // weight bildet den Status auf 0..1 ab (halb zählt halb).
-  const getQuote = (dataObj, courseName, studentId, weight) => {
+  // exclude(key, studentId): entries this returns true for don't count at all —
+  // weder für noch gegen. Genutzt für entschuldigtes Material, das sonst
+  // unverändert gegen die Quote zählen würde.
+  const getQuote = (dataObj, courseName, studentId, weight, exclude) => {
     let total = 0, sum = 0;
     Object.entries(dataObj).forEach(([key, record]) => {
       const i = key.indexOf("_");
       if (i < 0 || key.slice(i + 1) !== courseName) return;
       const status = record[studentId];
       if (status === undefined) return;
+      if (exclude && exclude(key, studentId)) return;
       total += 1;
       sum += weight(status);
     });
     return { count: total, quote: total ? sum / total : null };
   };
+
+  const isMaterialExcused = (key, studentId) => (excusedMaterial[key] || []).includes(studentId);
 
   const getTestAverage = (courseName, studentId) => {
     const grades = tests
@@ -1434,7 +1467,7 @@ function App() {
   };
 
   const getMaterialEffect = (courseName, studentId) => {
-    const q = getQuote(materials, courseName, studentId, s => s==="here" ? 1 : 0);
+    const q = getQuote(materials, courseName, studentId, s => s==="here" ? 1 : 0, isMaterialExcused);
     if (q.count < MAT_MIN_COUNT) return { delta:0, status:"noch keine Daten" };
     return { delta: q.quote < MAT_THRESHOLD ? +1 : 0, status:`${Math.round(q.quote*100)}%` };
   };
@@ -2822,7 +2855,7 @@ function App() {
     // A lesson counts as held if anything at all was recorded for it.
     const keys = new Set([
       ...Object.keys(topics), ...Object.keys(absences), ...Object.keys(homework), ...Object.keys(lateArrivals),
-      ...Object.keys(homeworkAssigned),
+      ...Object.keys(homeworkAssigned), ...Object.keys(materials),
       ...observations.map(o => `${o.date}_${o.course}`),
     ]);
     const cutoff = new Date(Date.now() - 7*86400000).toISOString().slice(0,10);
@@ -2841,10 +2874,19 @@ function App() {
       const lateNames = (lateArrivals[k] || [])
         .map(id => c?.students.find(s => s.id === id)?.name)
         .filter(Boolean);
+      const excusedMatIds = excusedMaterial[k] || [];
+      const materialNames = Object.entries(materials[k] || {})
+        .filter(([, status]) => status === "missing")
+        .map(([id]) => {
+          const name = c?.students.find(s => s.id === id)?.name;
+          if (!name) return null;
+          return excusedMatIds.includes(id) ? `${name} (entschuldigt)` : name;
+        })
+        .filter(Boolean);
       const hw = homework[k];
       const missing = hw ? Object.values(hw).filter(v => v !== "done").length : 0;
       return {
-        key:k, date, course, topic: topics[k] || "", absentNames, lateNames,
+        key:k, date, course, topic: topics[k] || "", absentNames, lateNames, materialNames,
         hwText: !hw ? null : missing === 0 ? "HA vollständig" : `HA: ${missing}× unvollständig`,
         hwNextText: homeworkAssigned[k] || "",
         obsCount: observations.filter(o => o.date === date && o.course === course && isRating(o)).length,
@@ -2936,6 +2978,11 @@ function App() {
                 {r.lateNames.length > 0 && (
                   <div style={{ fontSize:13, color:C.amber }}>
                     Verspätet: {r.lateNames.join(", ")}
+                  </div>
+                )}
+                {r.materialNames.length > 0 && (
+                  <div style={{ fontSize:13, color:C.amber }}>
+                    Material fehlte: {r.materialNames.join(", ")}
                   </div>
                 )}
                 {r.hwNextText && (
@@ -3046,7 +3093,7 @@ function App() {
         onClick={() => {
           if (window.confirm("Wirklich ALLE Daten löschen? Dies kann nicht rückgängig gemacht werden.")) {
             ["obs_courses","obs_observations","obs_homework","obs_absences","obs_topics",
-             "obs_materials","obs_tests","obs_homeworkAssigned","obs_excusedAbsences","obs_lateArrivals",
+             "obs_materials","obs_tests","obs_homeworkAssigned","obs_excusedAbsences","obs_excusedMaterial","obs_lateArrivals",
              "obs_session","obs_lastAutoBackup","obs_nextAutoBackupDays"].forEach(k => localStorage.removeItem(k));
             window.location.reload();
           }
@@ -3231,6 +3278,10 @@ function App() {
           {course.students.map(st => {
             const absent  = backfillAbsent.includes(st.id);
             const excused = backfillExcused.includes(st.id);
+            // Material fehlte live in dieser Stunde — hier nur entschuldbar,
+            // nicht nachträglich neu markierbar (das läuft über die Stunde selbst).
+            const materialMissing = (materials[`${backfillDate}_${backfillCourse}`] || {})[st.id] === "missing";
+            const matExcused = backfillExcusedMaterial.includes(st.id);
             return (
               <div key={st.id} style={{ ...S.row,
                        background: absent ? C.redSoft : C.card,
@@ -3239,8 +3290,19 @@ function App() {
                   style={{ background:"none", border:"none", textAlign:"left", cursor:"pointer",
                            WebkitAppearance:"none", padding:0, flex:1, minHeight:32 }}>
                   <span style={{ fontSize:15, fontWeight:500, color: absent ? C.red : C.text }}>{st.name}</span>
+                  {materialMissing && (
+                    <div style={{ fontSize:12, color: matExcused ? C.green : C.amber, marginTop:2 }}>
+                      Material fehlte {matExcused ? "· entschuldigt" : ""}
+                    </div>
+                  )}
                 </button>
                 <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                  {materialMissing && (
+                    <button onClick={() => toggleBackfillExcusedMaterial(st.id)}
+                      style={{ ...S.btnSm(matExcused ? "green" : "ghost"), padding:"6px 10px", fontSize:12 }}>
+                      {matExcused ? "✓ Mat. entschuldigt" : "Mat. entschuldigen?"}
+                    </button>
+                  )}
                   {absent && (
                     <button onClick={() => toggleBackfillExcused(st.id)}
                       style={{ ...S.btnSm(excused ? "green" : "ghost"), padding:"6px 10px", fontSize:12 }}>

@@ -265,6 +265,12 @@ ein gutes Ergebnis in einer Spur kann ein schlechtes in einer anderen ausgleiche
 | HA-Quote         | ab 6 Kontrollen: < 80%                                | +1 Zeile runter|
 | Material-Quote   | ab 8 Kontrollen: < 85%                                | +1 Zeile runter|
 
+Ein „Material fehlte"-Eintrag lässt sich nachträglich entschuldigen (Klassenbuch →
+Tag antippen → „Mat. entschuldigen?"), z.B. wenn Tage später eine plausible
+Begründung kommt. Entschuldigte Einträge zählen weder für noch gegen die
+Material-Quote — sie fallen aus Zähler und Nenner raus, statt als „hier"
+mitgezählt zu werden.
+
 Disclaimer immer: „Pädagogische Einschätzung der Lehrkraft entscheidet."
 
 ---
