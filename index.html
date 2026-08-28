@@ -3282,37 +3282,44 @@ function App() {
             // nicht nachträglich neu markierbar (das läuft über die Stunde selbst).
             const materialMissing = (materials[`${backfillDate}_${backfillCourse}`] || {})[st.id] === "missing";
             const matExcused = backfillExcusedMaterial.includes(st.id);
+            // Zwei mögliche Entschuldigen-Buttons nebeneinander sprengten auf
+            // schmalen Handy-Breiten die feste Ein-Zeile-Reihe von S.row — der
+            // zweite Button lief hinter dem Kartenrand ab, statt umzubrechen.
+            // Eigenes, wrap-fähiges Layout: Name+Status oben, Buttons darunter.
             return (
-              <div key={st.id} style={{ ...S.row,
-                       background: absent ? C.redSoft : C.card,
-                       borderColor: absent ? C.red : C.border }}>
+              <div key={st.id} style={{ background: absent ? C.redSoft : C.card,
+                       border:`1px solid ${absent ? C.red : C.border}`,
+                       borderRadius:10, padding:"14px", marginBottom:6 }}>
                 <button onClick={() => toggleBackfillAbsent(st.id)}
-                  style={{ background:"none", border:"none", textAlign:"left", cursor:"pointer",
-                           WebkitAppearance:"none", padding:0, flex:1, minHeight:32 }}>
+                  style={{ display:"flex", justifyContent:"space-between", alignItems:"center", width:"100%",
+                           background:"none", border:"none", textAlign:"left", cursor:"pointer",
+                           WebkitAppearance:"none", padding:0, minHeight:32, boxSizing:"border-box" }}>
                   <span style={{ fontSize:15, fontWeight:500, color: absent ? C.red : C.text }}>{st.name}</span>
-                  {materialMissing && (
-                    <div style={{ fontSize:12, color: matExcused ? C.green : C.amber, marginTop:2 }}>
-                      Material fehlte {matExcused ? "· entschuldigt" : ""}
-                    </div>
-                  )}
-                </button>
-                <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
-                  {materialMissing && (
-                    <button onClick={() => toggleBackfillExcusedMaterial(st.id)}
-                      style={{ ...S.btnSm(matExcused ? "green" : "ghost"), padding:"6px 10px", fontSize:12 }}>
-                      {matExcused ? "✓ Mat. entschuldigt" : "Mat. entschuldigen?"}
-                    </button>
-                  )}
-                  {absent && (
-                    <button onClick={() => toggleBackfillExcused(st.id)}
-                      style={{ ...S.btnSm(excused ? "green" : "ghost"), padding:"6px 10px", fontSize:12 }}>
-                      {excused ? "✓ entschuldigt" : "entschuldigt?"}
-                    </button>
-                  )}
-                  <span style={{ fontSize:13, fontWeight:700, color: absent ? C.red : C.textDim }}>
+                  <span style={{ fontSize:13, fontWeight:700, color: absent ? C.red : C.textDim, flexShrink:0, marginLeft:8 }}>
                     {absent ? "fehlt" : "da"}
                   </span>
-                </div>
+                </button>
+                {materialMissing && (
+                  <div style={{ fontSize:12, color: matExcused ? C.green : C.amber, marginTop:4 }}>
+                    Material fehlte {matExcused ? "· entschuldigt" : ""}
+                  </div>
+                )}
+                {(materialMissing || absent) && (
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:8 }}>
+                    {materialMissing && (
+                      <button onClick={() => toggleBackfillExcusedMaterial(st.id)}
+                        style={{ ...S.btnSm(matExcused ? "green" : "ghost"), padding:"6px 10px", fontSize:12 }}>
+                        {matExcused ? "✓ Mat. entschuldigt" : "Mat. entschuldigen?"}
+                      </button>
+                    )}
+                    {absent && (
+                      <button onClick={() => toggleBackfillExcused(st.id)}
+                        style={{ ...S.btnSm(excused ? "green" : "ghost"), padding:"6px 10px", fontSize:12 }}>
+                        {excused ? "✓ entschuldigt" : "entschuldigt?"}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
