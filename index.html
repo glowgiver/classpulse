@@ -3304,17 +3304,21 @@ function App() {
                     Material fehlte {matExcused ? "· entschuldigt" : ""}
                   </div>
                 )}
+                {/* Nebeneinander mit flex-wrap reichte auf dem echten Handy nicht —
+                    je nach Systemschrift-Größe passte der gewrappte Button trotzdem
+                    nicht ganz rein und wurde am Kartenrand abgeschnitten. Jeder
+                    Button jetzt auf eigener, voller Breite — kann so nie kollidieren. */}
                 {(materialMissing || absent) && (
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:8 }}>
+                  <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:8 }}>
                     {materialMissing && (
                       <button onClick={() => toggleBackfillExcusedMaterial(st.id)}
-                        style={{ ...S.btnSm(matExcused ? "green" : "ghost"), padding:"6px 10px", fontSize:12 }}>
+                        style={{ ...S.btnSm(matExcused ? "green" : "ghost"), padding:"8px 10px", fontSize:12, width:"100%", boxSizing:"border-box" }}>
                         {matExcused ? "✓ Mat. entschuldigt" : "Mat. entschuldigen?"}
                       </button>
                     )}
                     {absent && (
                       <button onClick={() => toggleBackfillExcused(st.id)}
-                        style={{ ...S.btnSm(excused ? "green" : "ghost"), padding:"6px 10px", fontSize:12 }}>
+                        style={{ ...S.btnSm(excused ? "green" : "ghost"), padding:"8px 10px", fontSize:12, width:"100%", boxSizing:"border-box" }}>
                         {excused ? "✓ entschuldigt" : "entschuldigt?"}
                       </button>
                     )}
