@@ -522,6 +522,19 @@ function App() {
   const [backfillExcusedMaterial, setBackfillExcusedMaterial] = useState([]);
   const [backfillTopic,  setBackfillTopic]  = useState("");
   const [backfillHwNext, setBackfillHwNext] = useState("");
+  // HA-Kontrolle nachträglich: wer erst abends/am Wochenende zum Kontrollieren
+  // kommt (z.B. Hochladen im iServ-Aufgabenmodul), soll die HA-Erledigung nicht
+  // mehr am selben Tag im Unterricht erfassen müssen.
+  const [backfillHwGiven,  setBackfillHwGiven]  = useState(false);
+  const [backfillHwStatus, setBackfillHwStatus] = useState({});
+  // Material war bisher im Nachtrag nur entschuldbar, nicht neu setzbar — wer
+  // die Stunde nicht live geführt hat (Vertretung, oder HA erst später
+  // kontrolliert), konnte "Material fehlte" gar nicht erst eintragen.
+  const [backfillMaterialStatus, setBackfillMaterialStatus] = useState({});
+  // Beobachtung nachträglich: gleiche Kriterien-Buttons wie in der laufenden
+  // Stunde, nur für einen vergangenen Tag/Kurs statt activeCourse/today.
+  const [backfillObsActive,  setBackfillObsActive]  = useState(false);
+  const [backfillObsStudent, setBackfillObsStudent] = useState(null);
 
   // Tests: eigener Modal, außerhalb des Stundenablaufs — am Schreibtisch
   // eingetragen, nicht zwischen zwei Wortmeldungen.
@@ -599,6 +612,7 @@ function App() {
 
   const openBackfill = (courseName, date) => {
     const key = `${date}_${courseName}`;
+    const existingHw = homework[key] || {};
     setBackfillCourse(courseName);
     setBackfillDate(date);
     setBackfillAbsent(absences[key] || []);
@@ -606,6 +620,11 @@ function App() {
     setBackfillExcusedMaterial(excusedMaterial[key] || []);
     setBackfillTopic(topics[key] || "");
     setBackfillHwNext(homeworkAssigned[key] || "");
+    setBackfillHwGiven(Object.keys(existingHw).length > 0);
+    setBackfillHwStatus(existingHw);
+    setBackfillMaterialStatus(materials[key] || {});
+    setBackfillObsActive(false);
+    setBackfillObsStudent(null);
   };
 
   const toggleBackfillAbsent = (studentId) => {
@@ -627,12 +646,11 @@ function App() {
 
   const saveBackfill = () => {
     const key = `${backfillDate}_${backfillCourse}`;
+    const course = courses.find(c => c.name === backfillCourse);
+    const present = course ? course.students.filter(st => !backfillAbsent.includes(st.id)) : [];
     setAbsences(prev => ({ ...prev, [key]: backfillAbsent }));
     // Entschuldigt kann nur bleiben, wer auch tatsächlich (noch) als fehlend markiert ist.
     setExcusedAbsences(prev => ({ ...prev, [key]: backfillExcused.filter(id => backfillAbsent.includes(id)) }));
-    // Entschuldigt kann nur bleiben, wer an diesem Tag tatsächlich als "Material fehlt" erfasst ist.
-    const missingIds = Object.entries(materials[key] || {}).filter(([,v]) => v === "missing").map(([id]) => id);
-    setExcusedMaterial(prev => ({ ...prev, [key]: backfillExcusedMaterial.filter(id => missingIds.includes(id)) }));
     setTopics(prev => {
       const next = { ...prev };
       if (backfillTopic.trim()) next[key] = backfillTopic.trim(); else delete next[key];
@@ -643,8 +661,43 @@ function App() {
       if (backfillHwNext.trim()) next[key] = backfillHwNext.trim(); else delete next[key];
       return next;
     });
+    // Gleiche Logik wie die Live-Vorbereitungsphase: nur wer an diesem Tag da
+    // war, bekommt einen Eintrag; ohne Ausnahme zählt "gemacht".
+    setHomework(prev => {
+      const next = { ...prev };
+      if (backfillHwGiven && present.length) {
+        const record = {};
+        present.forEach(st => { record[st.id] = backfillHwStatus[st.id] || "done"; });
+        next[key] = record;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
+    // Material wird jede Stunde geprüft, unabhängig von HA — genau wie live.
+    const matRecord = {};
+    present.forEach(st => { matRecord[st.id] = backfillMaterialStatus[st.id] || "here"; });
+    setMaterials(prev => ({ ...prev, [key]: matRecord }));
+    // Entschuldigt kann nur bleiben, wer nach dieser Speicherung tatsächlich als "fehlt" markiert ist.
+    const missingIds = Object.entries(matRecord).filter(([,v]) => v === "missing").map(([id]) => id);
+    setExcusedMaterial(prev => ({ ...prev, [key]: backfillExcusedMaterial.filter(id => missingIds.includes(id)) }));
     setShowBackfill(false);
     setBackfillCourse(null);
+  };
+
+  const toggleBackfillHwGiven = () => {
+    setBackfillHwGiven(prev => !prev);
+  };
+
+  const setBackfillHwStatusFor = (studentId, status) => {
+    setBackfillHwStatus(prev => ({ ...prev, [studentId]: status }));
+  };
+
+  const toggleBackfillMaterial = (studentId) => {
+    setBackfillMaterialStatus(prev => {
+      const next = prev[studentId] === "missing" ? "here" : "missing";
+      return { ...prev, [studentId]: next };
+    });
   };
 
   // ── TESTS ────────────────────────────────────────────────────────────────
@@ -929,11 +982,15 @@ function App() {
     setSessionPhase("observe");
   };
 
-  const addObs = (studentId, criterionId, rating, note="") => {
+  // courseOverride/dateOverride: Beobachtung nachträglich für einen vergangenen
+  // Tag/Kurs erfassen (Stunde-nachtragen-Screen), statt für die laufende Stunde.
+  const addObs = (studentId, criterionId, rating, note="", courseOverride=null, dateOverride=null) => {
+    const obsCourse = courseOverride || activeCourse;
+    const obsDate    = dateOverride    || today;
     // Build description for the toast
-    const course  = courses.find(c => c.name === activeCourse);
+    const course  = courses.find(c => c.name === obsCourse);
     const student = course?.students.find(st => st.id === studentId);
-    const crit    = getCriteria(activeCourse).find(c => c.id === criterionId);
+    const crit    = getCriteria(obsCourse).find(c => c.id === criterionId);
     const stName  = student?.name.split(" ")[0] || "?";
     const critLbl = crit?.short || (criterionId === "note" ? "Notiz" : criterionId);
     const ratingSym = rating === "+" ? "+" : "−";
@@ -943,8 +1000,8 @@ function App() {
     // Same sign again takes it back, opposite sign replaces it — so what the tile
     // shows always matches what the grade proposal counts.
     const existing = criterionId === "note" ? null : observations.find(o =>
-      o.course === activeCourse && o.studentId === studentId &&
-      o.criterionId === criterionId && o.date === today
+      o.course === obsCourse && o.studentId === studentId &&
+      o.criterionId === criterionId && o.date === obsDate
     );
 
     if (existing && existing.rating === rating) {
@@ -969,8 +1026,8 @@ function App() {
 
     const obs = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
-      course: activeCourse, studentId, criterionId,
-      rating, note, date: today,
+      course: obsCourse, studentId, criterionId,
+      rating, note, date: obsDate,
       time: now(),
     };
     setObservations(prev => [...prev, obs]);
@@ -3272,16 +3329,36 @@ function App() {
           <input value={backfillHwNext} onChange={e => setBackfillHwNext(e.target.value)}
             placeholder="HA für nächstes Mal (optional)" {...inputFocus}
             style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
-                     borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:14,
+                     borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:8,
                      boxSizing:"border-box" }} />
+
+          {/* HA-Erledigung erst hier kontrollieren, wenn Zeit ist (z.B. nach dem
+              Sichten im iServ-Aufgabenmodul) — unabhängig vom Unterrichtstag. */}
+          <button style={{ ...S.btnSm(backfillHwGiven ? "green" : "ghost"), width:"100%", marginBottom:8 }}
+            onClick={toggleBackfillHwGiven}>
+            {backfillHwGiven ? "✓ HA-Erledigung wird kontrolliert" : "HA-Erledigung nachträglich kontrollieren"}
+          </button>
+
+          {/* Beobachtung nachträglich: gleiche Kriterien wie in der laufenden
+              Stunde, nur für einen vergangenen Tag/Kurs statt jetzt. */}
+          <button style={{ ...S.btnSm(backfillObsActive ? "green" : "ghost"), width:"100%", marginBottom:14 }}
+            onClick={() => { setBackfillObsActive(prev => !prev); setBackfillObsStudent(null); }}>
+            {backfillObsActive ? "✓ Beobachtung wird erfasst" : "Beobachtung nachträglich erfassen"}
+          </button>
 
           {course.students.map(st => {
             const absent  = backfillAbsent.includes(st.id);
             const excused = backfillExcused.includes(st.id);
-            // Material fehlte live in dieser Stunde — hier nur entschuldbar,
-            // nicht nachträglich neu markierbar (das läuft über die Stunde selbst).
-            const materialMissing = (materials[`${backfillDate}_${backfillCourse}`] || {})[st.id] === "missing";
+            const hwStatus = backfillHwStatus[st.id] || "done";
+            const setHwStatus = (newStatus) => setBackfillHwStatusFor(st.id, newStatus);
+            const matStatus = backfillMaterialStatus[st.id] || "here";
+            const materialMissing = matStatus === "missing";
             const matExcused = backfillExcusedMaterial.includes(st.id);
+            const obsCriteria = getCriteria(backfillCourse);
+            const obsAreas = [...new Set(obsCriteria.map(c => c.area))];
+            const dayObs = obsFor(backfillCourse, st.id).filter(o => o.date === backfillDate);
+            const obsDoneCount = dayObs.filter(isRating).length;
+            const obsExpanded = backfillObsStudent === st.id;
             // Zwei mögliche Entschuldigen-Buttons nebeneinander sprengten auf
             // schmalen Handy-Breiten die feste Ein-Zeile-Reihe von S.row — der
             // zweite Button lief hinter dem Kartenrand ab, statt umzubrechen.
@@ -3299,9 +3376,67 @@ function App() {
                     {absent ? "fehlt" : "da"}
                   </span>
                 </button>
-                {materialMissing && (
-                  <div style={{ fontSize:12, color: matExcused ? C.green : C.amber, marginTop:4 }}>
-                    Material fehlte {matExcused ? "· entschuldigt" : ""}
+                {!absent && (
+                  <div style={{ display:"flex", gap:6, alignItems:"center", marginTop:8 }}>
+                    <span style={{ fontSize:11, color:C.textMuted, marginRight:2 }}>Mat.</span>
+                    <button style={{ ...S.btnSm(matStatus==="here"?"green":"ghost"), flex:1 }}
+                      onClick={() => matStatus!=="here" && toggleBackfillMaterial(st.id)}>✓</button>
+                    <button style={{ ...S.btnSm(matStatus==="missing"?"red":"ghost"), flex:1 }}
+                      onClick={() => matStatus!=="missing" && toggleBackfillMaterial(st.id)}>✗</button>
+                  </div>
+                )}
+                {backfillHwGiven && !absent && (
+                  <div style={{ display:"flex", gap:6, alignItems:"center", marginTop:8 }}>
+                    <span style={{ fontSize:11, color:C.textMuted, marginRight:2 }}>HA</span>
+                    <button style={{ ...S.btnSm(hwStatus==="done"?"green":"ghost"), flex:1 }}
+                      onClick={() => setHwStatus("done")}>✓</button>
+                    <button style={{ ...S.btnSm(hwStatus==="half"?"amber":"ghost"), flex:1 }}
+                      onClick={() => setHwStatus(hwStatus==="half"?"done":"half")}>½</button>
+                    <button style={{ ...S.btnSm(hwStatus==="not"?"red":"ghost"), flex:1 }}
+                      onClick={() => setHwStatus(hwStatus==="not"?"done":"not")}>✗</button>
+                  </div>
+                )}
+                {backfillObsActive && !absent && (
+                  <button style={{ ...S.btnSm(obsExpanded ? "green" : "ghost"), width:"100%", marginTop:8, fontSize:13, padding:"8px 10px" }}
+                    onClick={() => setBackfillObsStudent(obsExpanded ? null : st.id)}>
+                    Beobachtung {obsExpanded ? "einklappen" : `bearbeiten (${obsDoneCount}/${obsCriteria.length})`}
+                  </button>
+                )}
+                {obsExpanded && (
+                  <div style={{ marginTop:10 }}>
+                    {obsAreas.map(area => {
+                      const areaCriteria = obsCriteria.filter(c => c.area === area);
+                      return (
+                        <div key={area} style={{ marginBottom:8 }}>
+                          <div style={{ fontSize:11, color:C.textMuted, fontWeight:700, letterSpacing:"0.04em", marginBottom:4 }}>{area}</div>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                            {areaCriteria.map(crit => {
+                              const critEntry = dayObs.find(o => o.criterionId === crit.id);
+                              const isPos = critEntry?.rating === "+";
+                              const isNeg = critEntry?.rating === "-";
+                              return (
+                                <div key={crit.id} style={{
+                                  background: isPos ? C.greenSoft : isNeg ? C.redSoft : C.surface,
+                                  border: `1px solid ${isPos ? C.green : isNeg ? C.red : C.border}`,
+                                  borderRadius:8, padding:"6px 8px", display:"flex", flexDirection:"column", gap:6 }}>
+                                  <span style={{ fontSize:12, fontWeight:600, color: isPos ? C.green : isNeg ? C.red : C.text }}>{crit.short}</span>
+                                  <div style={{ display:"flex", gap:4 }}>
+                                    <button onClick={() => addObs(st.id, crit.id, "+", "", backfillCourse, backfillDate)}
+                                      style={{ flex:1, padding:"6px 0", background: isPos ? C.green : "transparent",
+                                               color: isPos ? C.onFill : C.green, border:`1px solid ${C.green}`,
+                                               borderRadius:6, fontSize:14, fontWeight:700, cursor:"pointer", WebkitAppearance:"none" }}>+</button>
+                                    <button onClick={() => addObs(st.id, crit.id, "-", "", backfillCourse, backfillDate)}
+                                      style={{ flex:1, padding:"6px 0", background: isNeg ? C.red : "transparent",
+                                               color: isNeg ? C.onFill : C.red, border:`1px solid ${C.red}`,
+                                               borderRadius:6, fontSize:14, fontWeight:700, cursor:"pointer", WebkitAppearance:"none" }}>−</button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 {/* Nebeneinander mit flex-wrap reichte auf dem echten Handy nicht —
