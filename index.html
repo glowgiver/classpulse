@@ -535,6 +535,9 @@ function App() {
   // Stunde, nur für einen vergangenen Tag/Kurs statt activeCourse/today.
   const [backfillObsActive,  setBackfillObsActive]  = useState(false);
   const [backfillObsStudent, setBackfillObsStudent] = useState(null);
+  // Notiz zur HA an diesem Tag (z.B. was beim Durchsehen im iServ auffiel) —
+  // eigenes Feld pro aufgeklapptem Schüler, wird beim Wechsel geleert.
+  const [backfillNoteText, setBackfillNoteText] = useState("");
 
   // Tests: eigener Modal, außerhalb des Stundenablaufs — am Schreibtisch
   // eingetragen, nicht zwischen zwei Wortmeldungen.
@@ -3398,7 +3401,7 @@ function App() {
                 )}
                 {backfillObsActive && !absent && (
                   <button style={{ ...S.btnSm(obsExpanded ? "green" : "ghost"), width:"100%", marginTop:8, fontSize:13, padding:"8px 10px" }}
-                    onClick={() => setBackfillObsStudent(obsExpanded ? null : st.id)}>
+                    onClick={() => { setBackfillObsStudent(obsExpanded ? null : st.id); setBackfillNoteText(""); }}>
                     Beobachtung {obsExpanded ? "einklappen" : `bearbeiten (${obsDoneCount}/${obsCriteria.length})`}
                   </button>
                 )}
@@ -3437,6 +3440,45 @@ function App() {
                         </div>
                       );
                     })}
+
+                    {/* Notiz zur HA/Beobachtung an diesem Tag — z.B. was beim
+                        Durchsehen im iServ-Aufgabenmodul auffiel. */}
+                    {(() => {
+                      const dayNotes = dayObs.filter(o => o.criterionId === "note");
+                      return (
+                        <>
+                          {dayNotes.length > 0 && (
+                            <div style={{ marginBottom:6 }}>
+                              {dayNotes.map(n => (
+                                <div key={n.id} style={{ fontSize:13, color:C.text, padding:"6px 8px",
+                                         background:C.surface, borderRadius:6, marginBottom:4, borderLeft:`3px solid ${C.accent}` }}>
+                                  {n.note}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ display:"flex", gap:6 }}>
+                            <input value={backfillNoteText} onChange={e => setBackfillNoteText(e.target.value)}
+                              placeholder="Notiz zur HA/Beobachtung (optional)…" {...inputFocus}
+                              onKeyDown={e => {
+                                if (e.key === "Enter" && backfillNoteText.trim()) {
+                                  addObs(st.id, "note", "+", backfillNoteText.trim(), backfillCourse, backfillDate);
+                                  setBackfillNoteText("");
+                                }
+                              }}
+                              style={{ flex:1, padding:"8px 10px", background:C.surface, border:`1px solid ${C.border}`,
+                                       borderRadius:8, color:C.text, fontSize:13, outline:"none", boxSizing:"border-box" }} />
+                            <button style={{ ...S.btnSm("primary"), padding:"8px 14px", fontSize:13 }}
+                              onClick={() => {
+                                if (backfillNoteText.trim()) {
+                                  addObs(st.id, "note", "+", backfillNoteText.trim(), backfillCourse, backfillDate);
+                                  setBackfillNoteText("");
+                                }
+                              }}>+</button>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
                 {/* Nebeneinander mit flex-wrap reichte auf dem echten Handy nicht —
