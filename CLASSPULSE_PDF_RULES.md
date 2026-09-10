@@ -212,8 +212,8 @@ Allgemein-Set fielen beide schon immer zusammen.
 
 ## Skala der Bereichs-Kreuze (5 Spalten)
 
-Dieselben Schwellen wie der Notenvorschlag (80/60/45/30%), nur ohne die unterste
-15%-Trennung, weil der Bogen 5 statt 6 Stufen hat. **Erst ab 4 Beobachtungen in
+Dieselben Schwellen wie der Notenvorschlag (90/75/55/35%), nur ohne die unterste
+18%-Trennung, weil der Bogen 5 statt 6 Stufen hat. **Erst ab 4 Beobachtungen in
 diesem Bereich** — sonst könnte ein einzelnes "+" am zweiten Schultag schon
 „in besonderem Maße" auslösen. Dieselbe Schutzlogik wie MIN_ENTRIES/MIN_DAYS
 beim Notenvorschlag, hier nur pro Bereich statt für den ganzen Kurs (ein reiner
@@ -222,11 +222,11 @@ Mengen-Cutoff, kein Tage-Cutoff — die Kriterien-Daten tragen hier kein Datum):
 | Beobachtungen im Bereich | Ratio +/(+−)              | Spalte                     |
 |---------------------------|----------------------------|----------------------------|
 | < 4                        | —                          | kein Kreuz                 |
-| ≥ 4                        | ≥ 80%                      | in besonderem Maße         |
-| ≥ 4                        | ≥ 60%                      | umfassend                  |
-| ≥ 4                        | ≥ 45%                      | weitgehend                 |
-| ≥ 4                        | ≥ 30%                      | in Grundzügen               |
-| ≥ 4                        | < 30%                      | nicht oder nur in Ansätzen |
+| ≥ 4                        | ≥ 90%                      | in besonderem Maße         |
+| ≥ 4                        | ≥ 75%                      | umfassend                  |
+| ≥ 4                        | ≥ 55%                      | weitgehend                 |
+| ≥ 4                        | ≥ 35%                      | in Grundzügen               |
+| ≥ 4                        | < 35%                      | nicht oder nur in Ansätzen |
 
 Sowohl die 5er-Skala als auch die Mindestmenge (4) sind eigenständige Cutoffs
 (nicht mit Philipp einzeln durchgesprochen) — beim ersten Einsatz gegenprüfen,
@@ -238,21 +238,27 @@ ob sie zur tatsächlichen Einschätzung passen.
 
 Nur anzeigen ab: **6 Einträge / 3 verschiedene Tage**
 
-(6 statt 5: Bei genau 5 Einträgen liegt keine ganze Zahl von „+" im Band
-45–60 %, die Note **3** wäre also im Moment der Freischaltung rechnerisch
-unerreichbar. Ab 6 Einträgen ist jedes Notenband erreichbar.)
+(6 statt 5: Bei genau 5 Einträgen liegt nicht für jedes Band eine erreichbare
+ganze Zahl von „+" vor — irgendeine Note wäre im Moment der Freischaltung
+rechnerisch unerreichbar. Ab 6 Einträgen ist jedes Notenband erreichbar.)
 
 **Basis-Band** aus der Gesamt-Ratio über alle Kriterien (Drittelnoten-Kurse
 zeigen „Note", Oberstufen-Kurse mit `notenformat: "punkte"` zeigen „Punkte"):
 
+**Stand 2026-09-10 verschärft** — die ursprünglichen Schwellen (80/60/45/30/15%)
+erwiesen sich am Schuljahresanfang als zu großzügig: bei den ersten 15 Schülern
+mit genug Daten landeten 100% im oberen der zwei besten Bänder. Grund: ein „−"
+zu vergeben ist eine aktive Entscheidung, während Nicht-Melden gar nicht in die
+Ratio einfließt — das drückt den Ratio strukturell nach oben.
+
 | Ratio +/(+−) | Note    | Punkte  | Label                         |
 |-------------|---------|---------|-------------------------------|
-| ≥ 80%       | 1–2     | 12–15   | sehr gut / gut                |
-| ≥ 60%       | 2–3     | 9–11    | gut / befriedigend            |
-| ≥ 45%       | 3       | 7–8     | befriedigend                  |
-| ≥ 30%       | 3–4     | 5–6     | befriedigend / ausreichend    |
-| ≥ 15%       | 4–5     | 2–4     | ausreichend / mangelhaft      |
-| < 15%       | 5–6     | 0–1     | mangelhaft / ungenügend       |
+| ≥ 90%       | 1–2     | 12–15   | sehr gut / gut                |
+| ≥ 75%       | 2–3     | 9–11    | gut / befriedigend            |
+| ≥ 55%       | 3       | 7–8     | befriedigend                  |
+| ≥ 35%       | 3–4     | 5–6     | befriedigend / ausreichend    |
+| ≥ 18%       | 4–5     | 2–4     | ausreichend / mangelhaft      |
+| < 18%       | 5–6     | 0–1     | mangelhaft / ungenügend       |
 
 **Korrektur** — Vokabeltests, HA-Quote, Material-Quote verschieben das Basis-Band
 danach um maximal ±1 Zeile insgesamt (Effekte werden addiert, dann gedeckelt —

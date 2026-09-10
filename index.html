@@ -1424,9 +1424,9 @@ function App() {
   };
 
   // ── NOTENVORSCHLAG ───────────────────────────────────────────────────────
-  // 6, not 5: at exactly 5 entries no whole number of "+" lands in the 45–60%
-  // band, so the grade "3" — the most common one — could not be proposed at the
-  // very moment the proposal unlocks. From 6 entries on, every band is reachable.
+  // 6, not 5: at exactly 5 entries not every band has a reachable whole-number
+  // ratio, so some grade could not be proposed at the very moment the proposal
+  // unlocks. From 6 entries on, every band is reachable.
   const MIN_ENTRIES  = 6;
   const MIN_DAYS     = 3;
 
@@ -1459,12 +1459,12 @@ function App() {
   // abgebildet, damit die Zahl nie außerhalb dessen liegt, was tatsächlich
   // angezeigt wird. Spiegel von interpolate_punkte() in classpulse_export.py.
   const PUNKTE_INTERP_BOUNDS = [
-    { ratioLo:0.80, ratioHi:1.00, ptsLo:12, ptsHi:15 },
-    { ratioLo:0.60, ratioHi:0.80, ptsLo: 9, ptsHi:11 },
-    { ratioLo:0.45, ratioHi:0.60, ptsLo: 7, ptsHi: 8 },
-    { ratioLo:0.30, ratioHi:0.45, ptsLo: 5, ptsHi: 6 },
-    { ratioLo:0.15, ratioHi:0.30, ptsLo: 2, ptsHi: 4 },
-    { ratioLo:0.00, ratioHi:0.15, ptsLo: 0, ptsHi: 1 },
+    { ratioLo:0.90, ratioHi:1.00, ptsLo:12, ptsHi:15 },
+    { ratioLo:0.75, ratioHi:0.90, ptsLo: 9, ptsHi:11 },
+    { ratioLo:0.55, ratioHi:0.75, ptsLo: 7, ptsHi: 8 },
+    { ratioLo:0.35, ratioHi:0.55, ptsLo: 5, ptsHi: 6 },
+    { ratioLo:0.18, ratioHi:0.35, ptsLo: 2, ptsHi: 4 },
+    { ratioLo:0.00, ratioHi:0.18, ptsLo: 0, ptsHi: 1 },
   ];
   const interpolatePunkte = (ratio, bandIndex) => {
     const b = PUNKTE_INTERP_BOUNDS[bandIndex];
@@ -1558,11 +1558,11 @@ function App() {
     const pos = obs.filter(o => o.rating === "+").length;
     const ratio = pos / obs.length;
     let baseIndex;
-    if      (ratio >= 0.80) baseIndex = 0;
-    else if (ratio >= 0.60) baseIndex = 1;
-    else if (ratio >= 0.45) baseIndex = 2;
-    else if (ratio >= 0.30) baseIndex = 3;
-    else if (ratio >= 0.15) baseIndex = 4;
+    if      (ratio >= 0.90) baseIndex = 0;
+    else if (ratio >= 0.75) baseIndex = 1;
+    else if (ratio >= 0.55) baseIndex = 2;
+    else if (ratio >= 0.35) baseIndex = 3;
+    else if (ratio >= 0.18) baseIndex = 4;
     else                    baseIndex = 5;
 
     const bands      = getBands(courseName);

@@ -132,7 +132,7 @@ SHEET_BULLETS = {
 }
 
 # ── SKALA (5 Spalten des Original-Blatts) — dieselben Schwellen wie der
-#    Notenvorschlag in der App (80/60/45/30%), nur ohne die unterste 15%-
+#    Notenvorschlag in der App (90/75/55/35%), nur ohne die unterste 18%-
 #    Trennung, weil hier nur 5 statt 6 Stufen zur Verfügung stehen.
 #    BEREICH_MIN_OBS: ohne Mindestmenge könnte ein einzelnes "+" am zweiten
 #    Schultag schon "in besonderem Maße" auslösen — dieselbe Sorte Fehler,
@@ -146,10 +146,10 @@ def scale_index(pos, neg):
     if total < BEREICH_MIN_OBS:
         return None
     ratio = pos / total
-    if ratio >= 0.80: return 4
-    if ratio >= 0.60: return 3
-    if ratio >= 0.45: return 2
-    if ratio >= 0.30: return 1
+    if ratio >= 0.90: return 4
+    if ratio >= 0.75: return 3
+    if ratio >= 0.55: return 2
+    if ratio >= 0.35: return 1
     return 0
 
 # ── NOTENVORSCHLAG — exakter Spiegel von getGradeProposal in index.html,
@@ -180,12 +180,12 @@ MIN_ENTRIES, MIN_DAYS = 6, 3
 # liegt, was tatsächlich gedruckt steht. (ratio_lo, ratio_hi, punkte_lo, punkte_hi),
 # dieselbe Reihenfolge wie GRADE_BANDS_PUNKTE/base_band_index.
 PUNKTE_INTERP_BOUNDS = [
-    (0.80, 1.00, 12, 15),
-    (0.60, 0.80,  9, 11),
-    (0.45, 0.60,  7,  8),
-    (0.30, 0.45,  5,  6),
-    (0.15, 0.30,  2,  4),
-    (0.00, 0.15,  0,  1),
+    (0.90, 1.00, 12, 15),
+    (0.75, 0.90,  9, 11),
+    (0.55, 0.75,  7,  8),
+    (0.35, 0.55,  5,  6),
+    (0.18, 0.35,  2,  4),
+    (0.00, 0.18,  0,  1),
 ]
 
 def interpolate_punkte(ratio, band_idx):
@@ -194,11 +194,11 @@ def interpolate_punkte(ratio, band_idx):
     return round(lo_p + (r - lo_r) / (hi_r - lo_r) * (hi_p - lo_p))
 
 def base_band_index(ratio):
-    if ratio >= 0.80: return 0
-    if ratio >= 0.60: return 1
-    if ratio >= 0.45: return 2
-    if ratio >= 0.30: return 3
-    if ratio >= 0.15: return 4
+    if ratio >= 0.90: return 0
+    if ratio >= 0.75: return 1
+    if ratio >= 0.55: return 2
+    if ratio >= 0.35: return 3
+    if ratio >= 0.18: return 4
     return 5
 
 def test_delta(avg, notenformat):
