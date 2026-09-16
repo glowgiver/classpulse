@@ -253,7 +253,7 @@ const migrateCourseNames = () => {
     // only, since course names may contain further underscores.
     // obs_topics belongs in this list too — it uses the same key scheme and was
     // simply missed when this migration was first written for the Jg8/Jg9 rename.
-    ["obs_homework", "obs_absences", "obs_materials", "obs_homeworkAssigned", "obs_excusedAbsences", "obs_excusedMaterial", "obs_topics", "obs_lateArrivals"].forEach(key => {
+    ["obs_homework", "obs_absences", "obs_materials", "obs_homeworkAssigned", "obs_excusedAbsences", "obs_excusedMaterial", "obs_topics", "obs_lateArrivals", "obs_remoteDays"].forEach(key => {
       const val = loadData(key, null);
       if (!val) return;
       const out = {};
@@ -469,6 +469,10 @@ function App() {
   const [homeworkAssigned, setHomeworkAssigned] = useState(() => loadData("obs_homeworkAssigned", {}));
   // Material-Kontrolle, gleiches Schlüsselschema wie homework/absences.
   const [materials,    setMaterials]    = useState(() => loadData("obs_materials", {}));
+  // Markiert Stunden, die nicht live gehalten wurden (z.B. Krankheit + Aufgabe
+  // im iServ-Aufgabenmodul). Nur ein Flag pro Tag/Kurs, kein Zähler — dient als
+  // Hinweis im Klassenbuch, nicht als eigene Auswertung.
+  const [remoteDays,   setRemoteDays]   = useState(() => loadData("obs_remoteDays", {}));
   // Tests: eigene Liste, {id, course, date, title, grades:{studentId: note}}.
   const [tests,         setTests]        = useState(() => loadData("obs_tests", []));
 
@@ -527,6 +531,7 @@ function App() {
   // kommt (z.B. Hochladen im iServ-Aufgabenmodul), soll die HA-Erledigung nicht
   // mehr am selben Tag im Unterricht erfassen müssen.
   const [backfillHwGiven,  setBackfillHwGiven]  = useState(false);
+  const [backfillRemote,   setBackfillRemote]   = useState(false);
   const [backfillHwStatus, setBackfillHwStatus] = useState({});
   // Material war bisher im Nachtrag nur entschuldbar, nicht neu setzbar — wer
   // die Stunde nicht live geführt hat (Vertretung, oder HA erst später
@@ -631,6 +636,7 @@ function App() {
     setBackfillHwGiven(Object.keys(existingHw).length > 0);
     setBackfillHwStatus(existingHw);
     setBackfillMaterialStatus(materials[key] || {});
+    setBackfillRemote(!!remoteDays[key]);
     setBackfillObsActive(false);
     setBackfillObsStudent(null);
     setBackfillNoteText("");
@@ -692,12 +698,21 @@ function App() {
     // Entschuldigt kann nur bleiben, wer nach dieser Speicherung tatsächlich als "fehlt" markiert ist.
     const missingIds = Object.entries(matRecord).filter(([,v]) => v === "missing").map(([id]) => id);
     setExcusedMaterial(prev => ({ ...prev, [key]: backfillExcusedMaterial.filter(id => missingIds.includes(id)) }));
+    setRemoteDays(prev => {
+      const next = { ...prev };
+      if (backfillRemote) next[key] = true; else delete next[key];
+      return next;
+    });
     setShowBackfill(false);
     setBackfillCourse(null);
   };
 
   const toggleBackfillHwGiven = () => {
     setBackfillHwGiven(prev => !prev);
+  };
+
+  const toggleBackfillRemote = () => {
+    setBackfillRemote(prev => !prev);
   };
 
   const setBackfillHwStatusFor = (studentId, status) => {
@@ -796,6 +811,7 @@ function App() {
   useEffect(() => saveData("obs_topics",       topics),       [topics]);
   useEffect(() => saveData("obs_homeworkAssigned", homeworkAssigned), [homeworkAssigned]);
   useEffect(() => saveData("obs_materials",    materials),    [materials]);
+  useEffect(() => saveData("obs_remoteDays",   remoteDays),   [remoteDays]);
   useEffect(() => saveData("obs_tests",        tests),        [tests]);
 
   // Keep the running session recoverable; clear it once the lesson is ended.
@@ -1337,7 +1353,7 @@ function App() {
   };
 
   const downloadBackup = (filenamePrefix) => {
-    const data = { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences, excusedMaterial, lateArrivals };
+    const data = { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences, excusedMaterial, lateArrivals, remoteDays };
     const backup = {
       version: "1.0",
       exportDate: new Date().toISOString(),
@@ -1376,6 +1392,7 @@ function App() {
         const exa = backup.data.excusedAbsences  && typeof backup.data.excusedAbsences  === "object" ? backup.data.excusedAbsences  : {};
         const exm = backup.data.excusedMaterial  && typeof backup.data.excusedMaterial  === "object" ? backup.data.excusedMaterial  : {};
         const lta = backup.data.lateArrivals     && typeof backup.data.lateArrivals     === "object" ? backup.data.lateArrivals     : {};
+        const rmd = backup.data.remoteDays       && typeof backup.data.remoteDays       === "object" ? backup.data.remoteDays       : {};
         if (!Array.isArray(c) || !Array.isArray(o) ||
             !h || typeof h !== "object" || !a || typeof a !== "object")
           throw new Error("Daten unvollständig oder beschädigt");
@@ -1402,6 +1419,7 @@ function App() {
         setExcusedAbsences(exa);
         setExcusedMaterial(exm);
         setLateArrivals(lta);
+        setRemoteDays(rmd);
         saveData("obs_courses",      cWithSlots);
         saveData("obs_observations", o);
         saveData("obs_homework",     h);
@@ -1413,6 +1431,7 @@ function App() {
         saveData("obs_excusedAbsences",  exa);
         saveData("obs_excusedMaterial",  exm);
         saveData("obs_lateArrivals",     lta);
+        saveData("obs_remoteDays",       rmd);
         setBackupImportOK(true);
         setBackupError("");
         setTimeout(() => setBackupImportOK(false), 3000);
@@ -2923,7 +2942,7 @@ function App() {
     // A lesson counts as held if anything at all was recorded for it.
     const keys = new Set([
       ...Object.keys(topics), ...Object.keys(absences), ...Object.keys(homework), ...Object.keys(lateArrivals),
-      ...Object.keys(homeworkAssigned), ...Object.keys(materials),
+      ...Object.keys(homeworkAssigned), ...Object.keys(materials), ...Object.keys(remoteDays),
       ...observations.map(o => `${o.date}_${o.course}`),
     ]);
     const cutoff = new Date(Date.now() - 7*86400000).toISOString().slice(0,10);
@@ -2958,6 +2977,7 @@ function App() {
         hwText: !hw ? null : missing === 0 ? "HA vollständig" : `HA: ${missing}× unvollständig`,
         hwNextText: homeworkAssigned[k] || "",
         obsCount: observations.filter(o => o.date === date && o.course === course && isRating(o)).length,
+        remote: !!remoteDays[k],
       };
     })
     .filter(r => logbookAll || r.date >= cutoff)
@@ -3031,7 +3051,15 @@ function App() {
                          background:"none", border:"none", WebkitAppearance:"none",
                          padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
                 <div style={{ display:"flex", justifyContent:"space-between", gap:10, marginBottom:2 }}>
-                  <span style={{ fontSize:15, fontWeight:700, color:C.text }}>{fmtLogDate(r.date)}</span>
+                  <span style={{ fontSize:15, fontWeight:700, color:C.text }}>
+                    {fmtLogDate(r.date)}
+                    {r.remote && (
+                      <span style={{ marginLeft:6, fontSize:11, fontWeight:600, color:C.amber,
+                                     background:C.amberSoft, borderRadius:6, padding:"2px 6px" }}>
+                        Fernunterricht
+                      </span>
+                    )}
+                  </span>
                   <span style={{ fontSize:13, color:C.textDim, flexShrink:0 }}>
                     {r.obsCount > 0 ? `${r.obsCount} Beob.` : ""}
                   </span>
@@ -3161,7 +3189,7 @@ function App() {
         onClick={() => {
           if (window.confirm("Wirklich ALLE Daten löschen? Dies kann nicht rückgängig gemacht werden.")) {
             ["obs_courses","obs_observations","obs_homework","obs_absences","obs_topics",
-             "obs_materials","obs_tests","obs_homeworkAssigned","obs_excusedAbsences","obs_excusedMaterial","obs_lateArrivals",
+             "obs_materials","obs_tests","obs_homeworkAssigned","obs_excusedAbsences","obs_excusedMaterial","obs_lateArrivals","obs_remoteDays",
              "obs_session","obs_lastAutoBackup","obs_nextAutoBackupDays"].forEach(k => localStorage.removeItem(k));
             window.location.reload();
           }
@@ -3342,6 +3370,14 @@ function App() {
             style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
                      borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:8,
                      boxSizing:"border-box" }} />
+
+          {/* Für Krankheitstage mit Aufgabe im iServ-Aufgabenmodul: reine
+              Kennzeichnung, damit im Klassenbuch sichtbar bleibt, dass die
+              Stunde nicht live stattfand — ändert nichts an Ratio/Auswertung. */}
+          <button style={{ ...S.btnSm(backfillRemote ? "amber" : "ghost"), width:"100%", marginBottom:8 }}
+            onClick={toggleBackfillRemote}>
+            {backfillRemote ? "✓ Fernunterricht / iServ-Aufgabe (nicht vor Ort)" : "Als Fernunterricht/iServ-Aufgabe kennzeichnen"}
+          </button>
 
           {/* HA-Erledigung erst hier kontrollieren, wenn Zeit ist (z.B. nach dem
               Sichten im iServ-Aufgabenmodul) — unabhängig vom Unterrichtstag. */}
