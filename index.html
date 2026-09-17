@@ -1596,6 +1596,16 @@ function App() {
   // Fernunterricht-Tage zählen nur für Schüler, die an dem Tag bewertet wurden —
   // wer nicht im Raum sein konnte, war nicht "unauffällig".
   const MAX_PER_LESSON = 3;
+  // Eine Doppelstunde ist doppelt so viel Gelegenheit mitzumachen und zählt
+  // deshalb doppelt — auch als neutrale Stunde. Maßgeblich ist der Stundenplan
+  // des Kurses zum Zeitpunkt der Auswertung; ein Tag ohne passenden Termin
+  // (z.B. eine nachgetragene Vertretung) zählt einfach.
+  const getLessonUnits = (courseName, date) => {
+    const course = courses.find(c => c.name === courseName);
+    const day = new Date(`${date}T12:00:00`).getDay();
+    return (course?.slots || []).some(sl => sl.day === day && sl.type === "double") ? 2 : 1;
+  };
+
   const getLessonStats = (courseName, studentId) => {
     const byDate = new Map();
     obsFor(courseName, studentId).filter(isRating).forEach(o => {
@@ -1610,12 +1620,13 @@ function App() {
       const d = byDate.get(date);
       if (remoteDays[key] && !d) return;
       lessons += 1;
+      const units = getLessonUnits(courseName, date);
       if (d) {
         const total = d.pos + d.neg;
-        const w = Math.min(total, MAX_PER_LESSON);
+        const w = Math.min(total, MAX_PER_LESSON * units);
         rated += 1; weight += w; sum += w * d.pos / total;
       } else {
-        weight += 1; sum += NEUTRAL_SCORE;
+        weight += units; sum += NEUTRAL_SCORE * units;
       }
     });
     return { lessons, rated, score: weight ? sum / weight : null };
@@ -3252,6 +3263,7 @@ function App() {
         <strong style={{ color:C.text }}>Notenvorschlag:</strong><br/>
         Ab {MIN_LESSONS} anwesenden Stunden pro Schüler. Jeder Eintrag zählt<br/>
         (höchstens {MAX_PER_LESSON} pro Stunde), eine Stunde ohne Eintrag zählt wie ein neutraler.<br/>
+        Doppelstunden zählen doppelt (laut Stundenplan des Kurses).<br/>
         Pädagogische Einschätzung der Lehrkraft entscheidet.<br/><br/>
         <strong style={{ color:C.text }}>Gewichtung (laufende Mitarbeit / schriftlich):</strong><br/>
         {courses.filter(c => c.criteriaType !== "none").map(c => (

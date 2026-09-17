@@ -140,29 +140,36 @@ MIN_LESSONS    = 6
 NEUTRAL_SCORE  = 0.5
 MAX_PER_LESSON = 3
 
+def lessons_present(st):
+    """Anwesende Stunden = Tage mit Eintrag + Tage ohne. Doppelstunden sind hier
+    ein Tag; ihr doppeltes Gewicht steckt in den units, nicht in dieser Zahl."""
+    return len(st["rated_lessons"]) + len(st["unrated_lessons"])
+
 def lesson_score(st, crit_ids=None):
     """Score über alle anwesenden Stunden; crit_ids schränkt auf einen Bereich ein
     (Stunden ohne Eintrag in diesem Bereich zählen dann neutral)."""
-    present = st["lessons_present"]
-    if not present:
+    if not lessons_present(st):
         return None
-    total_sum = weight = rated = 0
+    total_sum = weight = 0
+    neutral_units = sum(st["unrated_lessons"])
     for lesson in st["rated_lessons"]:
-        p = sum(v[0] for cid, v in lesson.items() if crit_ids is None or cid in crit_ids)
-        n = sum(v[1] for cid, v in lesson.items() if crit_ids is None or cid in crit_ids)
+        units = lesson.get("_units", 1)
+        p = sum(v[0] for cid, v in lesson.items() if cid != "_units" and (crit_ids is None or cid in crit_ids))
+        n = sum(v[1] for cid, v in lesson.items() if cid != "_units" and (crit_ids is None or cid in crit_ids))
         if p + n:
-            w = min(p + n, MAX_PER_LESSON)
+            w = min(p + n, MAX_PER_LESSON * units)
             total_sum += w * p / (p + n)
             weight += w
-            rated += 1
-    neutral = present - rated
-    return (total_sum + NEUTRAL_SCORE * neutral) / (weight + neutral)
+        else:
+            # In diesem Bereich nichts beobachtet — die Stunde zählt trotzdem neutral.
+            neutral_units += units
+    return (total_sum + NEUTRAL_SCORE * neutral_units) / (weight + neutral_units)
 
 def obs_totals(st):
     """(pos, neg) pro Kriterium über alle Stunden — für Tendenzen und die Klassenliste."""
     totals = {}
     for lesson in st["rated_lessons"]:
-        for cid, (p, n) in lesson.items():
+        for cid, (p, n) in ((c, v) for c, v in lesson.items() if c != "_units"):
             tp, tn = totals.get(cid, (0, 0))
             totals[cid] = (tp + p, tn + n)
     return totals
@@ -177,8 +184,8 @@ def obs_totals(st):
 #    einzeln abgestimmt) — bei Bedarf anpassen. ─────────────────────────────
 BEREICH_MIN_OBS = 4
 
-def scale_index(score, entry_count, lessons_present):
-    if score is None or entry_count < BEREICH_MIN_OBS or lessons_present < MIN_LESSONS:
+def scale_index(score, entry_count, lessons):
+    if score is None or entry_count < BEREICH_MIN_OBS or lessons < MIN_LESSONS:
         return None
     if score >= 0.80: return 4
     if score >= 0.65: return 3
@@ -249,9 +256,9 @@ def hw_delta(quote):
 def material_delta(quote):
     return 1 if (quote is not None and quote < 0.85) else 0
 
-def grade_proposal(lessons_present, ratio, notenformat, test_avg=None, hw_quote=None, mat_quote=None):
+def grade_proposal(lessons, ratio, notenformat, test_avg=None, hw_quote=None, mat_quote=None):
     """None, wenn die Mindestmenge (6 anwesende Stunden) noch nicht erreicht ist."""
-    if lessons_present < MIN_LESSONS or ratio is None:
+    if lessons < MIN_LESSONS or ratio is None:
         return None
     bands = GRADE_BANDS_PUNKTE if notenformat == "punkte" else GRADE_BANDS_NOTEN
     base_idx = base_band_index(ratio)
@@ -269,21 +276,22 @@ def score_label(notenformat):
 #    dem Backup ersetzen (Kriterien-IDs siehe FREMDSPRACHEN_CRITERIA oben).
 #    hw_quote/material_quote/test_avg: None lassen, wenn die jeweilige
 #    Mindestmenge (6 / 8 / 2) noch nicht erreicht ist.
-#    lessons_present: Stunden des Kurses, an denen irgendetwas erfasst wurde und
-#      der Schüler nicht fehlte (Fernunterricht-Tage nur, wenn er an dem Tag
-#      bewertet wurde) — dieselbe Zählung wie getLessonStats in index.html.
-#    rated_lessons: eine Liste pro Stunde MIT Eintrag, {kriterium: (+, −)}.
-#      Stunden ohne Eintrag stehen NICHT drin — sie ergeben sich aus
-#      lessons_present und zählen neutral. ─────────────────────────────────────
+#    Anwesende Stunden = Tage, an denen für den Kurs etwas erfasst wurde und der
+#    Schüler nicht fehlte (Fernunterricht-Tage nur, wenn er an dem Tag bewertet
+#    wurde) — dieselbe Zählung wie getLessonStats in index.html.
+#    rated_lessons: ein Eintrag pro Stunde MIT Bewertung, {kriterium: (+, −)},
+#      "_units": 2 bei einer Doppelstunde (laut Stundenplan des Kurses), sonst weg.
+#    unrated_lessons: die units der anwesenden Stunden OHNE Eintrag, z.B.
+#      [2, 2, 1] für zwei Doppel- und eine Einzelstunde. Sie zählen neutral. ───
 STUDENTS = [
     {
         "name": "Ahuja, Priya",
-        "lessons_present": 20,
         "rated_lessons":
-            [{"fs1":(1,0), "fs2":(1,0), "fs12":(1,0)}] * 8 +
+            [{"_units":2, "fs1":(1,0), "fs2":(1,0), "fs12":(1,0)}] * 8 +
             [{"fs10":(1,0), "fs9":(1,0), "fs14":(1,0)}] * 6 +
-            [{"fs5":(1,1), "fs13":(1,0)}] * 2 +
+            [{"_units":2, "fs5":(1,1), "fs13":(1,0)}] * 2 +
             [{"fs9":(0,1)}],
+        "unrated_lessons": [2, 1, 1],
         "hw_quote": 0.94, "material_quote": 0.97, "test_avg": 1.7, "absent": 1,
         "notes": [
             ("2026-09-14", "Sehr starke Beteiligung in der Gruppenarbeit."),
@@ -292,12 +300,12 @@ STUDENTS = [
     },
     {
         "name": "Bekele, Samuel",
-        "lessons_present": 18,
         "rated_lessons":
-            [{"fs1":(0,1), "fs9":(0,1)}] * 5 +
+            [{"_units":2, "fs1":(0,1), "fs9":(0,1)}] * 5 +
             [{"fs2":(1,1), "fs12":(0,1)}] * 3 +
-            [{"fs5":(0,1), "fs13":(0,1)}] * 3 +
+            [{"_units":2, "fs5":(0,1), "fs13":(0,1)}] * 3 +
             [{"fs10":(1,0)}] * 2,
+        "unrated_lessons": [2, 2, 1, 1, 1],
         "hw_quote": 0.51, "material_quote": 0.68, "test_avg": 4.3, "absent": 4,
         "notes": [
             ("2026-09-22", "Wechselt häufig ins Deutsche, mehrfach angesprochen."),
@@ -306,10 +314,10 @@ STUDENTS = [
     },
     {
         "name": "Chen, Mei-Lin",
-        "lessons_present": 19,
         "rated_lessons":
-            [{"fs2":(1,0), "fs5":(1,0), "fs12":(1,0), "fs14":(1,0)}] * 9 +
+            [{"_units":2, "fs2":(1,0), "fs5":(1,0), "fs12":(1,0), "fs14":(1,0)}] * 9 +
             [{"fs10":(1,0), "fs13":(1,0), "fs9":(1,0)}] * 2,
+        "unrated_lessons": [2, 2, 2, 1, 1, 1, 1, 1],
         "hw_quote": 1.00, "material_quote": 1.00, "test_avg": 1.3, "absent": 0,
         "notes": [("2026-10-08", "Exzellente Vorbereitung, HA immer vollständig.")],
     },
@@ -386,7 +394,7 @@ def build_overview(styles, criteria):
 
     for st in STUDENTS:
         obs = obs_totals(st)
-        proposal = grade_proposal(st["lessons_present"], lesson_score(st), NOTENFORMAT,
+        proposal = grade_proposal(lessons_present(st), lesson_score(st), NOTENFORMAT,
                                    st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
         if proposal:
             gesamt = f"{score_label(NOTENFORMAT)} {proposal['grade']}"
@@ -455,7 +463,7 @@ def build_official_sheet(st, criteria, styles):
 
         pos, neg = section_counts(obs, criteria, bereich)
         crit_ids = {cid for cid, _, b in criteria if b == bereich}
-        idx = scale_index(lesson_score(st, crit_ids), pos + neg, st["lessons_present"])
+        idx = scale_index(lesson_score(st, crit_ids), pos + neg, lessons_present(st))
 
         col_w = [58*mm] + [23.4*mm]*5
         header_row = [Paragraph("Einschätzung der <b>Schülerin</b>/des <b>Schülers</b>", styles["table_header_sm"])] + \
@@ -494,7 +502,7 @@ def build_official_sheet(st, criteria, styles):
             styles["table_dim"]))
         story.append(Spacer(1, 2*mm))
 
-    proposal = grade_proposal(st["lessons_present"], lesson_score(st), NOTENFORMAT,
+    proposal = grade_proposal(lessons_present(st), lesson_score(st), NOTENFORMAT,
                                st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
     # override_grade: das PÄDAGOGISCH entschiedene Ergebnis, nachdem die
     # Lehrkraft die rechnerischen Vorschläge (siehe preview_grades()) gesehen
@@ -598,7 +606,7 @@ def preview_grades(students, notenformat, criteria_type_label=""):
     print(f"\n── Vorschau {criteria_type_label} ──".rstrip())
     for st in students:
         score = lesson_score(st)
-        proposal = grade_proposal(st["lessons_present"], score, notenformat,
+        proposal = grade_proposal(lessons_present(st), score, notenformat,
                                    st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
         if proposal:
             rechnerisch = f"{score_label(notenformat)} {proposal['grade']} ({proposal['label']})"
@@ -610,7 +618,7 @@ def preview_grades(students, notenformat, criteria_type_label=""):
         selbst = f"  ·  Selbsteinschätzung: {st['student_grade']}" if st.get("student_grade") else ""
         rated = len(st["rated_lessons"])
         score_txt = f"{score:.2f}" if score is not None else "–"
-        print(f"{st['name']:<28} {st['lessons_present']:>2} Std. ({rated} bewertet, Score {score_txt})   {rechnerisch}{override}{selbst}")
+        print(f"{st['name']:<28} {lessons_present(st):>2} Std. ({rated} bewertet, Score {score_txt})   {rechnerisch}{override}{selbst}")
     print()
 
 if __name__ == "__main__":

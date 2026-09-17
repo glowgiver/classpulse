@@ -261,8 +261,15 @@ einzutragen kostete nichts. An Schwellen zu drehen hilft dagegen nicht.
 | anwesende Stunde ohne Eintrag  | ein Eintrag mit 0,5 (neutral)              |
 | mehr als 3 Einträge in einer Stunde | zählen zusammen wie 3, im selben +/−-Verhältnis |
 
-Rechnung: (Summe der gewichteten Einträge + 0,5 × Stunden ohne Eintrag) /
-(Anzahl gewichteter Einträge + Stunden ohne Eintrag).
+**Doppelstunden zählen doppelt** — die neutrale Stunde wiegt 2 statt 1, und es
+zählen bis zu 6 Einträge statt 3. Maßgeblich ist der Stundenplan des Kurses
+(`slots` mit `type: "double"`, Wochentag des Datums). Ein Tag ohne passenden
+Termin, z.B. eine nachgetragene Vertretung an einem anderen Wochentag, zählt
+einfach. Für die 6-Stunden-Mindestmenge zählen Tage, nicht Einheiten — sonst
+hätte ein reiner Doppelstunden-Kurs schon nach 3 Terminen einen Vorschlag.
+
+Rechnung: (Summe der gewichteten Einträge + 0,5 × Einheiten der Stunden ohne
+Eintrag) / (Gewicht der Einträge + Einheiten der Stunden ohne Eintrag).
 
 **Stand 2026-09-17, zweite Anpassung:** Zuerst zählte jede Stunde nur einmal, egal
 wie viele „+" darin standen. Dann kam z.B. jemand mit +7 −0 in 2 von 7 Stunden
@@ -299,7 +306,7 @@ Ein Schüler ganz ohne Einträge landet also bei 50 % = „3". Das ist gewollt:
 unauffällig heißt befriedigend. Wer darüber liegen soll, braucht regelmäßig „+".
 Wer nie mitmacht, obwohl er angesprochen wird, bekommt dafür ein „−".
 Mit den Daten vom 2026-09-17 hatten erst 30 Schüler 6 anwesende Stunden (fast
-alle 8a Englisch). Verteilung von „1–2" bis „5–6": 5 / 5 / 13 / 5 / 2 / 0. Vorher
+alle 8a Englisch). Verteilung von „1–2" bis „5–6": 4 / 6 / 13 / 5 / 2 / 0. Vorher
 waren es 21 / 13 / 1 / 0 / 0 / 0. Dass sich so viele bei „3" sammeln, liegt an den
 wenigen Stunden bisher. Nach ein paar Wochen mehr Daten die Schwellen noch einmal
 gegenprüfen.
