@@ -252,17 +252,23 @@ Schüler mit Vorschlag standen in den zwei besten Bändern, und die Hälfte hatt
 kein einziges „−". Grund: Ein „−" ist eine aktive Entscheidung, nichts
 einzutragen kostete nichts. An Schwellen zu drehen hilft dagegen nicht.
 
-**Score pro Schüler** = Durchschnitt über alle anwesenden Stunden des Kurses:
+**Score pro Schüler** = Durchschnitt über alle Einträge plus die neutralen Stunden:
 
-| Stunde                        | zählt als              |
-|-------------------------------|------------------------|
-| nur „+"                       | 1                      |
-| nur „−"                       | 0                      |
-| „+" und „−" gemischt          | Anteil + / (+ und −)   |
-| anwesend, kein Eintrag        | 0,5 (neutral)          |
+| Was                            | zählt als                                  |
+|--------------------------------|--------------------------------------------|
+| jedes „+"                      | 1                                          |
+| jedes „−"                      | 0                                          |
+| anwesende Stunde ohne Eintrag  | ein Eintrag mit 0,5 (neutral)              |
+| mehr als 3 Einträge in einer Stunde | zählen zusammen wie 3, im selben +/−-Verhältnis |
 
-Mehrere „+" in derselben Stunde zählen wie eins, damit eine einzelne starke
-Stunde nicht alles überdeckt. `note` und `skip` sind keine Bewertungen.
+Rechnung: (Summe der gewichteten Einträge + 0,5 × Stunden ohne Eintrag) /
+(Anzahl gewichteter Einträge + Stunden ohne Eintrag).
+
+**Stand 2026-09-17, zweite Anpassung:** Zuerst zählte jede Stunde nur einmal, egal
+wie viele „+" darin standen. Dann kam z.B. jemand mit +7 −0 in 2 von 7 Stunden
+nur auf „3". Philipp sah sie eher bei „2". Jetzt zählen mehrere Einträge stärker.
+Die Grenze von 3 pro Stunde verhindert, dass eine einzelne Stunde die
+unauffälligen Stunden einfach überstimmt. `note` und `skip` sind keine Bewertungen.
 
 **So zählst du die Stunden aus dem Backup** (exakt wie `getLessonStats` in
 `index.html`):
@@ -293,7 +299,7 @@ Ein Schüler ganz ohne Einträge landet also bei 50 % = „3". Das ist gewollt:
 unauffällig heißt befriedigend. Wer darüber liegen soll, braucht regelmäßig „+".
 Wer nie mitmacht, obwohl er angesprochen wird, bekommt dafür ein „−".
 Mit den Daten vom 2026-09-17 hatten erst 30 Schüler 6 anwesende Stunden (fast
-alle 8a Englisch). Verteilung von „1–2" bis „5–6": 4 / 3 / 17 / 4 / 2 / 0. Vorher
+alle 8a Englisch). Verteilung von „1–2" bis „5–6": 5 / 5 / 13 / 5 / 2 / 0. Vorher
 waren es 21 / 13 / 1 / 0 / 0 / 0. Dass sich so viele bei „3" sammeln, liegt an den
 wenigen Stunden bisher. Nach ein paar Wochen mehr Daten die Schwellen noch einmal
 gegenprüfen.

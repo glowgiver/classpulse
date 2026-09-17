@@ -1590,11 +1590,12 @@ function App() {
     return { test, hw, mat, net };
   };
 
-  // Jede anwesende Stunde zählt gleich: nur "+" = 1, nur "−" = 0, gemischt
-  // anteilig, ohne Eintrag = neutral. Mehrere "+" in einer Stunde zählen wie
-  // eins, damit eine einzelne starke Stunde nicht alles überdeckt.
+  // Jeder Eintrag zählt, eine anwesende Stunde ohne Eintrag zählt wie ein
+  // neutraler Eintrag (0,5). Höchstens MAX_PER_LESSON Einträge pro Stunde, damit
+  // eine einzelne Stunde die unauffälligen nicht einfach überstimmt.
   // Fernunterricht-Tage zählen nur für Schüler, die an dem Tag bewertet wurden —
   // wer nicht im Raum sein konnte, war nicht "unauffällig".
+  const MAX_PER_LESSON = 3;
   const getLessonStats = (courseName, studentId) => {
     const byDate = new Map();
     obsFor(courseName, studentId).filter(isRating).forEach(o => {
@@ -1602,17 +1603,22 @@ function App() {
       if (o.rating === "+") d.pos += 1; else d.neg += 1;
       byDate.set(o.date, d);
     });
-    let lessons = 0, rated = 0, sum = 0;
+    let lessons = 0, rated = 0, sum = 0, weight = 0;
     (lessonDatesByCourse.get(courseName) || new Set()).forEach(date => {
       const key = `${date}_${courseName}`;
       if ((absences[key] || []).includes(studentId)) return;
       const d = byDate.get(date);
       if (remoteDays[key] && !d) return;
       lessons += 1;
-      if (d) { rated += 1; sum += d.pos / (d.pos + d.neg); }
-      else   { sum += NEUTRAL_SCORE; }
+      if (d) {
+        const total = d.pos + d.neg;
+        const w = Math.min(total, MAX_PER_LESSON);
+        rated += 1; weight += w; sum += w * d.pos / total;
+      } else {
+        weight += 1; sum += NEUTRAL_SCORE;
+      }
     });
-    return { lessons, rated, score: lessons ? sum / lessons : null };
+    return { lessons, rated, score: weight ? sum / weight : null };
   };
 
   const getGradeProposal = (courseName, studentId) => {
@@ -3244,8 +3250,8 @@ function App() {
         Alle anderen Fächer → Allg. Grootmoor-Bogen (8 Kriterien, 3/2/3)<br/>
         Vokabeltests, HA-Quote, Material-Quote: eigene Korrektur auf den Notenvorschlag (max. ±1 Notenstufe)<br/><br/>
         <strong style={{ color:C.text }}>Notenvorschlag:</strong><br/>
-        Ab {MIN_LESSONS} anwesenden Stunden pro Schüler. Jede Stunde zählt gleich:<br/>
-        nur „+“ = 1, nur „−“ = 0, gemischt anteilig, ohne Eintrag = neutral (0,5).<br/>
+        Ab {MIN_LESSONS} anwesenden Stunden pro Schüler. Jeder Eintrag zählt<br/>
+        (höchstens {MAX_PER_LESSON} pro Stunde), eine Stunde ohne Eintrag zählt wie ein neutraler.<br/>
         Pädagogische Einschätzung der Lehrkraft entscheidet.<br/><br/>
         <strong style={{ color:C.text }}>Gewichtung (laufende Mitarbeit / schriftlich):</strong><br/>
         {courses.filter(c => c.criteriaType !== "none").map(c => (

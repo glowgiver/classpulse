@@ -131,13 +131,14 @@ SHEET_BULLETS = {
     ],
 }
 
-# ── STUNDEN-SCORE — Spiegel von getLessonStats in index.html. Einheit ist die
-#    anwesende Stunde, nicht der Eintrag: nur "+" = 1, nur "−" = 0, gemischt
-#    anteilig, ohne Eintrag = neutral (0,5). Pro Eintrag gezählt landete fast
-#    jeder bei 100 % "+", weil Beobachtungen Momentaufnahmen sind und nichts
-#    einzutragen nichts kostete. ──────────────────────────────────────────────
-MIN_LESSONS   = 6
-NEUTRAL_SCORE = 0.5
+# ── STUNDEN-SCORE — Spiegel von getLessonStats in index.html. Jeder Eintrag
+#    zählt (höchstens MAX_PER_LESSON pro Stunde), eine anwesende Stunde ohne
+#    Eintrag zählt wie ein neutraler Eintrag (0,5). Ohne die neutralen Stunden
+#    landete fast jeder bei 100 % "+", weil Beobachtungen Momentaufnahmen sind
+#    und nichts einzutragen nichts kostete. ──────────────────────────────────
+MIN_LESSONS    = 6
+NEUTRAL_SCORE  = 0.5
+MAX_PER_LESSON = 3
 
 def lesson_score(st, crit_ids=None):
     """Score über alle anwesenden Stunden; crit_ids schränkt auf einen Bereich ein
@@ -145,13 +146,17 @@ def lesson_score(st, crit_ids=None):
     present = st["lessons_present"]
     if not present:
         return None
-    scores = []
+    total_sum = weight = rated = 0
     for lesson in st["rated_lessons"]:
         p = sum(v[0] for cid, v in lesson.items() if crit_ids is None or cid in crit_ids)
         n = sum(v[1] for cid, v in lesson.items() if crit_ids is None or cid in crit_ids)
         if p + n:
-            scores.append(p / (p + n))
-    return (sum(scores) + NEUTRAL_SCORE * (present - len(scores))) / present
+            w = min(p + n, MAX_PER_LESSON)
+            total_sum += w * p / (p + n)
+            weight += w
+            rated += 1
+    neutral = present - rated
+    return (total_sum + NEUTRAL_SCORE * neutral) / (weight + neutral)
 
 def obs_totals(st):
     """(pos, neg) pro Kriterium über alle Stunden — für Tendenzen und die Klassenliste."""
