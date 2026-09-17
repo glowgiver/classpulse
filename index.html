@@ -878,6 +878,25 @@ function App() {
   const obsFor       = useCallback((course, studentId) => obsIndex.byStudent.get(`${course}::${studentId}`) || [], [obsIndex]);
   const obsForCourse = useCallback((course) => obsIndex.byCourse.get(course) || [], [obsIndex]);
 
+  // Stattgefundene Stunden pro Kurs: jedes Datum, an dem für den Kurs irgendetwas
+  // erfasst wurde — dieselbe Definition wie im Klassenbuch. Grundlage dafür, dass
+  // eine Stunde ohne Beobachtung im Notenvorschlag als neutral zählt statt gar nicht.
+  const lessonDatesByCourse = useMemo(() => {
+    const map = new Map();
+    const add = (course, date) => {
+      if (!map.has(course)) map.set(course, new Set());
+      map.get(course).add(date);
+    };
+    [absences, materials, topics, homework, homeworkAssigned, lateArrivals].forEach(obj => {
+      Object.keys(obj).forEach(k => {
+        const i = k.indexOf("_");
+        if (i > 0) add(k.slice(i + 1), k.slice(0, i));
+      });
+    });
+    observations.forEach(o => add(o.course, o.date));
+    return map;
+  }, [absences, materials, topics, homework, homeworkAssigned, lateArrivals, observations]);
+
   const getSuggested = useCallback((courseName, count=4) => {
     const course = courses.find(c => c.name === courseName);
     if (!course) return [];
@@ -1443,11 +1462,12 @@ function App() {
   };
 
   // ── NOTENVORSCHLAG ───────────────────────────────────────────────────────
-  // 6, not 5: at exactly 5 entries not every band has a reachable whole-number
-  // ratio, so some grade could not be proposed at the very moment the proposal
-  // unlocks. From 6 entries on, every band is reachable.
-  const MIN_ENTRIES  = 6;
-  const MIN_DAYS     = 3;
+  // Einheit ist die anwesende Stunde, nicht der Eintrag: Beobachtungen sind
+  // Momentaufnahmen, und eine Stunde ohne Eintrag heißt "unauffällig", nicht
+  // "unbekannt". Pro Eintrag gezählt landete fast jeder bei 100 % "+" (Stand
+  // 2026-09-17: Median-Ratio 1,00), weil nichts einzutragen nichts kostete.
+  const MIN_LESSONS   = 6;
+  const NEUTRAL_SCORE = 0.5;
 
   // Sechs Bänder, beste zuerst — dieselbe Leiter für Drittelnoten und Punkte,
   // nur unterschiedlich beschriftet. Index in dieser Leiter ist das, was Tests,
@@ -1474,16 +1494,16 @@ function App() {
   // Notenpunkte werden am Ende als eine Zahl ins Zeugnis eingetragen, nicht als
   // Band — anders als Drittelnoten, wo "2+/2/2−" die Bandbreite schon ausdrückt.
   // Rein interpolierte Zusatzangabe, nur für Punkte-Kurse: innerhalb des
-  // angezeigten (nach Korrektur!) Bands wird die Ratio auf dessen Punktspanne
+  // angezeigten (nach Korrektur!) Bands wird der Score auf dessen Punktspanne
   // abgebildet, damit die Zahl nie außerhalb dessen liegt, was tatsächlich
   // angezeigt wird. Spiegel von interpolate_punkte() in classpulse_export.py.
   const PUNKTE_INTERP_BOUNDS = [
-    { ratioLo:0.90, ratioHi:1.00, ptsLo:12, ptsHi:15 },
-    { ratioLo:0.75, ratioHi:0.90, ptsLo: 9, ptsHi:11 },
-    { ratioLo:0.55, ratioHi:0.75, ptsLo: 7, ptsHi: 8 },
-    { ratioLo:0.35, ratioHi:0.55, ptsLo: 5, ptsHi: 6 },
-    { ratioLo:0.18, ratioHi:0.35, ptsLo: 2, ptsHi: 4 },
-    { ratioLo:0.00, ratioHi:0.18, ptsLo: 0, ptsHi: 1 },
+    { ratioLo:0.80, ratioHi:1.00, ptsLo:12, ptsHi:15 },
+    { ratioLo:0.65, ratioHi:0.80, ptsLo: 9, ptsHi:11 },
+    { ratioLo:0.50, ratioHi:0.65, ptsLo: 7, ptsHi: 8 },
+    { ratioLo:0.40, ratioHi:0.50, ptsLo: 5, ptsHi: 6 },
+    { ratioLo:0.25, ratioHi:0.40, ptsLo: 2, ptsHi: 4 },
+    { ratioLo:0.00, ratioHi:0.25, ptsLo: 0, ptsHi: 1 },
   ];
   const interpolatePunkte = (ratio, bandIndex) => {
     const b = PUNKTE_INTERP_BOUNDS[bandIndex];
@@ -1570,18 +1590,40 @@ function App() {
     return { test, hw, mat, net };
   };
 
+  // Jede anwesende Stunde zählt gleich: nur "+" = 1, nur "−" = 0, gemischt
+  // anteilig, ohne Eintrag = neutral. Mehrere "+" in einer Stunde zählen wie
+  // eins, damit eine einzelne starke Stunde nicht alles überdeckt.
+  // Fernunterricht-Tage zählen nur für Schüler, die an dem Tag bewertet wurden —
+  // wer nicht im Raum sein konnte, war nicht "unauffällig".
+  const getLessonStats = (courseName, studentId) => {
+    const byDate = new Map();
+    obsFor(courseName, studentId).filter(isRating).forEach(o => {
+      const d = byDate.get(o.date) || { pos:0, neg:0 };
+      if (o.rating === "+") d.pos += 1; else d.neg += 1;
+      byDate.set(o.date, d);
+    });
+    let lessons = 0, rated = 0, sum = 0;
+    (lessonDatesByCourse.get(courseName) || new Set()).forEach(date => {
+      const key = `${date}_${courseName}`;
+      if ((absences[key] || []).includes(studentId)) return;
+      const d = byDate.get(date);
+      if (remoteDays[key] && !d) return;
+      lessons += 1;
+      if (d) { rated += 1; sum += d.pos / (d.pos + d.neg); }
+      else   { sum += NEUTRAL_SCORE; }
+    });
+    return { lessons, rated, score: lessons ? sum / lessons : null };
+  };
+
   const getGradeProposal = (courseName, studentId) => {
-    const obs = obsFor(courseName, studentId).filter(isRating);
-    const days = new Set(obs.map(o => o.date)).size;
-    if (obs.length < MIN_ENTRIES || days < MIN_DAYS) return null;
-    const pos = obs.filter(o => o.rating === "+").length;
-    const ratio = pos / obs.length;
+    const { lessons, score: ratio } = getLessonStats(courseName, studentId);
+    if (lessons < MIN_LESSONS) return null;
     let baseIndex;
-    if      (ratio >= 0.90) baseIndex = 0;
-    else if (ratio >= 0.75) baseIndex = 1;
-    else if (ratio >= 0.55) baseIndex = 2;
-    else if (ratio >= 0.35) baseIndex = 3;
-    else if (ratio >= 0.18) baseIndex = 4;
+    if      (ratio >= 0.80) baseIndex = 0;
+    else if (ratio >= 0.65) baseIndex = 1;
+    else if (ratio >= 0.50) baseIndex = 2;
+    else if (ratio >= 0.40) baseIndex = 3;
+    else if (ratio >= 0.25) baseIndex = 4;
     else                    baseIndex = 5;
 
     const bands      = getBands(courseName);
@@ -1599,9 +1641,8 @@ function App() {
   };
 
   const getObsProgress = (courseName, studentId) => {
-    const obs = obsFor(courseName, studentId).filter(isRating);
-    const days = new Set(obs.map(o => o.date)).size;
-    return { count: obs.length, days, ready: obs.length >= MIN_ENTRIES && days >= MIN_DAYS };
+    const { lessons, rated } = getLessonStats(courseName, studentId);
+    return { lessons, rated, ready: lessons >= MIN_LESSONS };
   };
 
   // ── RENDER: HOME ─────────────────────────────────────────────────────────
@@ -2154,7 +2195,7 @@ function App() {
                   );
                 })()}
                 <div style={{ fontSize:13, color:C.textMuted, marginTop:8, paddingTop:6, borderTop:`1px solid ${C.border}` }}>
-                  {prog.count} Einträge / {prog.days} Tage · Pädagogische Einschätzung entscheidet.
+                  {prog.lessons} Stunden anwesend, davon {prog.rated} mit Eintrag · Stunden ohne Eintrag zählen neutral · Pädagogische Einschätzung entscheidet.
                 </div>
                 {/* Die Gewichtung ist nicht überall gleich — sie gehört an die Note,
                     nicht in eine Fußnote der Einstellungen. */}
@@ -2168,11 +2209,11 @@ function App() {
             );
 
             // Vorläufige Tendenz ab 1 Eintrag
-            if (prog.count > 0) return (
+            if (prog.rated > 0) return (
               <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px", marginTop:20 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
                   <div style={{ fontSize:13, color:C.textDim, fontWeight:700, letterSpacing:"0.06em" }}>ZWISCHENSTAND</div>
-                  <div style={{ fontSize:13, color:C.amber }}>⚠ {prog.count} Eintr. / {prog.days} Tage — vorläufig</div>
+                  <div style={{ fontSize:13, color:C.amber }}>⚠ {prog.lessons} von {MIN_LESSONS} Std. — vorläufig</div>
                 </div>
                 {critTendencies.length > 0 ? critTendencies.map(t => (
                   <div key={t.crit.id} style={{ display:"flex", justifyContent:"space-between", paddingTop:3 }}>
@@ -2183,7 +2224,7 @@ function App() {
                   <div style={{ fontSize:13, color:C.textMuted }}>Noch keine Kriterien bewertet.</div>
                 )}
                 <div style={{ fontSize:13, color:C.textMuted, marginTop:6 }}>
-                  Notenvorschlag ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} Tagen ·
+                  Notenvorschlag ab {MIN_LESSONS} anwesenden Stunden ·
                   Mitarbeit zählt hier {getMitarbeitAnteil(activeCourse)} %.
                 </div>
               </div>
@@ -2853,7 +2894,7 @@ function App() {
                     <div key={st.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 0", borderBottom:`1px solid ${C.border}` }}>
                       <span style={{ fontSize:15, color:C.text, flex:1 }}>{st.name}</span>
                       <span style={{ fontSize:13, color:C.textDim, marginRight:10 }}>
-                        {prog.count} Eintr. / {prog.days} Tage
+                        {prog.lessons} Std. / {prog.rated} bew.
                       </span>
                       {grade ? (
                         gradesVisible ? (
@@ -2867,20 +2908,14 @@ function App() {
                         )
                       ) : (
                         <span style={{ fontSize:13, color:C.textMuted, minWidth:52, textAlign:"right" }}>
-                          {(() => {
-                            const needEntries = MIN_ENTRIES - prog.count;
-                            const needDays    = MIN_DAYS - prog.days;
-                            if (needEntries > 0 && needDays > 0) return `noch ${needEntries} · ${needDays}T`;
-                            if (needEntries > 0) return `noch ${needEntries}`;
-                            return `${needDays}T fehlt`;
-                          })()}
+                          {`noch ${MIN_LESSONS - prog.lessons} Std.`}
                         </span>
                       )}
                     </div>
                   );
                 })}
                 <div style={{ fontSize:13, color:C.textMuted, marginTop:8 }}>
-                  Notenvorschlag ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} verschiedenen Tagen · Pädagogische Einschätzung der Lehrkraft entscheidet.
+                  Notenvorschlag ab {MIN_LESSONS} anwesenden Stunden · Stunden ohne Eintrag zählen neutral · Pädagogische Einschätzung der Lehrkraft entscheidet.
                 </div>
               </div>
               )}
@@ -3209,7 +3244,8 @@ function App() {
         Alle anderen Fächer → Allg. Grootmoor-Bogen (8 Kriterien, 3/2/3)<br/>
         Vokabeltests, HA-Quote, Material-Quote: eigene Korrektur auf den Notenvorschlag (max. ±1 Notenstufe)<br/><br/>
         <strong style={{ color:C.text }}>Notenvorschlag:</strong><br/>
-        Ab {MIN_ENTRIES} Einträgen / {MIN_DAYS} verschiedenen Tagen pro Schüler.<br/>
+        Ab {MIN_LESSONS} anwesenden Stunden pro Schüler. Jede Stunde zählt gleich:<br/>
+        nur „+“ = 1, nur „−“ = 0, gemischt anteilig, ohne Eintrag = neutral (0,5).<br/>
         Pädagogische Einschätzung der Lehrkraft entscheidet.<br/><br/>
         <strong style={{ color:C.text }}>Gewichtung (laufende Mitarbeit / schriftlich):</strong><br/>
         {courses.filter(c => c.criteriaType !== "none").map(c => (

@@ -29,7 +29,7 @@ Wenn's soweit ist und die Kinder ihre Noteneinschätzung bekommen sollen:
    diesem Backup für Jg8 History." (Pro Kurs einzeln — mehrere Kurse einfach
    nacheinander fragen.)
 5. **Vorschau-Tabelle anschauen — noch kein PDF.** Claude zeigt erstmal nur
-   Name, Einträge, rechnerischer Vorschlag pro Schüler. Kein Bogen existiert noch.
+   Name, anwesende Stunden, rechnerischer Vorschlag pro Schüler. Kein Bogen existiert noch.
 6. **Abweichungen und Selbsteinschätzungen durchgeben**, direkt im Chat, z.B.:
    „Fenja auf Punkte 13 setzen, ihre Selbsteinschätzung war 11. Rest passt so."
    Wer nicht erwähnt wird, bekommt den Rechenwert.
@@ -47,7 +47,7 @@ Wenn's soweit ist und die Kinder ihre Noteneinschätzung bekommen sollen:
 3. Beide Dateien hochladen: `ClassPulse_Backup_DATUM.json` + `CLASSPULSE_PDF_RULES.md`
 4. Schreiben: „Erstell mir die ClassPulse PDF-Exports aus diesem Backup"
 5. **Claude zeigt zuerst eine Vorschau-Tabelle** (`preview_grades()`) — Name,
-   Einträge, rechnerischer Vorschlag pro Schüler. **Noch keine PDF, noch keine
+   anwesende Stunden, rechnerischer Vorschlag pro Schüler. **Noch keine PDF, noch keine
    Bögen.**
 6. Philipp sieht sich das an und sagt, wo er pädagogisch abweicht (`override_grade`)
    und, falls schon bekannt (z.B. von IServ), die Selbsteinschätzung der Schüler
@@ -137,8 +137,8 @@ Selbsteinschätzung, die füllt der Schüler von Hand aus.
 - 5-Spalten-Tabelle, Kopfzeile DARK_HEADER: „nicht oder nur in Ansätzen" /
   „in Grundzügen" / „weitgehend" / „umfassend" / „in besonderem Maße"
 - Zeile „Meine Leistungen erfüllen die Anforderungen …" — ein ✕ in der Spalte,
-  die aus der Beobachtungs-Ratio dieses Bereichs folgt (siehe Skala unten);
-  keine Beobachtung im Bereich → kein Kreuz, keine Spalte hervorgehoben
+  die aus dem Stunden-Score dieses Bereichs folgt (siehe Skala unten);
+  zu wenige Beobachtungen im Bereich → kein Kreuz, keine Spalte hervorgehoben
 - Darunter die Original-Aufzählungspunkte dieses Bereichs, **wortgleich** —
   dieselben für jedes Fach, nicht aus den ClassPulse-Kriterien generiert
   (siehe `SHEET_BULLETS` im Skript für den exakten Text)
@@ -212,21 +212,24 @@ Allgemein-Set fielen beide schon immer zusammen.
 
 ## Skala der Bereichs-Kreuze (5 Spalten)
 
-Dieselben Schwellen wie der Notenvorschlag (90/75/55/35%), nur ohne die unterste
-18%-Trennung, weil der Bogen 5 statt 6 Stufen hat. **Erst ab 4 Beobachtungen in
-diesem Bereich** — sonst könnte ein einzelnes "+" am zweiten Schultag schon
-„in besonderem Maße" auslösen. Dieselbe Schutzlogik wie MIN_ENTRIES/MIN_DAYS
-beim Notenvorschlag, hier nur pro Bereich statt für den ganzen Kurs (ein reiner
-Mengen-Cutoff, kein Tage-Cutoff — die Kriterien-Daten tragen hier kein Datum):
+Derselbe Stunden-Score wie beim Notenvorschlag (siehe unten), nur auf die
+Kriterien dieses Bereichs eingeschränkt: eine anwesende Stunde ohne Eintrag *in
+diesem Bereich* zählt neutral (0,5). Dieselben Schwellen (80/65/50/40%), nur ohne
+die unterste 25%-Trennung, weil der Bogen 5 statt 6 Stufen hat. Neutral landet
+damit in „weitgehend", der Mitte.
 
-| Beobachtungen im Bereich | Ratio +/(+−)              | Spalte                     |
-|---------------------------|----------------------------|----------------------------|
-| < 4                        | —                          | kein Kreuz                 |
-| ≥ 4                        | ≥ 90%                      | in besonderem Maße         |
-| ≥ 4                        | ≥ 75%                      | umfassend                  |
-| ≥ 4                        | ≥ 55%                      | weitgehend                 |
-| ≥ 4                        | ≥ 35%                      | in Grundzügen               |
-| ≥ 4                        | < 35%                      | nicht oder nur in Ansätzen |
+**Ein Kreuz gibt es erst ab 6 anwesenden Stunden UND 4 echten Beobachtungen in
+diesem Bereich** — sonst stünde auf dem Bogen ein Kreuz, das nur aus neutralen
+Stunden besteht, also aus nichts, was tatsächlich beobachtet wurde.
+
+| Voraussetzung                          | Score im Bereich | Spalte                     |
+|-----------------------------------------|------------------|----------------------------|
+| < 6 Stunden oder < 4 Beob. im Bereich   | —                | kein Kreuz                 |
+| erfüllt                                 | ≥ 80%            | in besonderem Maße         |
+| erfüllt                                 | ≥ 65%            | umfassend                  |
+| erfüllt                                 | ≥ 50%            | weitgehend                 |
+| erfüllt                                 | ≥ 40%            | in Grundzügen              |
+| erfüllt                                 | < 40%            | nicht oder nur in Ansätzen |
 
 Sowohl die 5er-Skala als auch die Mindestmenge (4) sind eigenständige Cutoffs
 (nicht mit Philipp einzeln durchgesprochen) — beim ersten Einsatz gegenprüfen,
@@ -236,29 +239,64 @@ ob sie zur tatsächlichen Einschätzung passen.
 
 ## Notenvorschlag-Logik
 
-Nur anzeigen ab: **6 Einträge / 3 verschiedene Tage**
+Nur anzeigen ab: **6 anwesenden Stunden**
 
-(6 statt 5: Bei genau 5 Einträgen liegt nicht für jedes Band eine erreichbare
-ganze Zahl von „+" vor — irgendeine Note wäre im Moment der Freischaltung
-rechnerisch unerreichbar. Ab 6 Einträgen ist jedes Notenband erreichbar.)
+**Einheit ist die anwesende Stunde, nicht der Eintrag.** Beobachtungen sind
+Momentaufnahmen: Eingetragen wird, was auffällt. Eine Stunde ohne Eintrag heißt
+„unauffällig", nicht „unbekannt", und zählt deshalb neutral.
 
-**Basis-Band** aus der Gesamt-Ratio über alle Kriterien (Drittelnoten-Kurse
-zeigen „Note", Oberstufen-Kurse mit `notenformat: "punkte"` zeigen „Punkte"):
+**Stand 2026-09-17 umgestellt.** Vorher wurde pro Eintrag gezählt (+ / alle
+Einträge). Stunden ohne Eintrag fielen dabei einfach heraus. Selbst nach dem
+Verschärfen der Schwellen am 2026-09-10 lag die Median-Ratio bei 1,00, 97 % der
+Schüler mit Vorschlag standen in den zwei besten Bändern, und die Hälfte hatte
+kein einziges „−". Grund: Ein „−" ist eine aktive Entscheidung, nichts
+einzutragen kostete nichts. An Schwellen zu drehen hilft dagegen nicht.
 
-**Stand 2026-09-10 verschärft** — die ursprünglichen Schwellen (80/60/45/30/15%)
-erwiesen sich am Schuljahresanfang als zu großzügig: bei den ersten 15 Schülern
-mit genug Daten landeten 100% im oberen der zwei besten Bänder. Grund: ein „−"
-zu vergeben ist eine aktive Entscheidung, während Nicht-Melden gar nicht in die
-Ratio einfließt — das drückt den Ratio strukturell nach oben.
+**Score pro Schüler** = Durchschnitt über alle anwesenden Stunden des Kurses:
 
-| Ratio +/(+−) | Note    | Punkte  | Label                         |
+| Stunde                        | zählt als              |
+|-------------------------------|------------------------|
+| nur „+"                       | 1                      |
+| nur „−"                       | 0                      |
+| „+" und „−" gemischt          | Anteil + / (+ und −)   |
+| anwesend, kein Eintrag        | 0,5 (neutral)          |
+
+Mehrere „+" in derselben Stunde zählen wie eins, damit eine einzelne starke
+Stunde nicht alles überdeckt. `note` und `skip` sind keine Bewertungen.
+
+**So zählst du die Stunden aus dem Backup** (exakt wie `getLessonStats` in
+`index.html`):
+1. Stattgefundene Stunden eines Kurses = alle Daten, für die es einen Schlüssel
+   `DATUM_Kursname` in `absences`, `materials`, `topics`, `homework`,
+   `homeworkAssigned` oder `lateArrivals` gibt, plus alle Daten mit einer
+   Beobachtung (`observations`) in diesem Kurs.
+2. Pro Schüler: Stunden, an denen seine ID in `absences[DATUM_Kurs]` steht,
+   fallen weg.
+3. Tage in `remoteDays` (Fernunterricht) zählen nur, wenn der Schüler an dem Tag
+   eine Bewertung hat. Wer nicht im Raum sein konnte, war nicht „unauffällig".
+4. Ergebnis → `lessons_present`. Die Stunden mit Bewertung → `rated_lessons`,
+   eine Liste mit `{kriterium: (+, −)}` pro Stunde.
+
+**Basis-Band** aus dem Score (Drittelnoten-Kurse zeigen „Note",
+Oberstufen-Kurse mit `notenformat: "punkte"` zeigen „Punkte"):
+
+| Score       | Note    | Punkte  | Label                         |
 |-------------|---------|---------|-------------------------------|
-| ≥ 90%       | 1–2     | 12–15   | sehr gut / gut                |
-| ≥ 75%       | 2–3     | 9–11    | gut / befriedigend            |
-| ≥ 55%       | 3       | 7–8     | befriedigend                  |
-| ≥ 35%       | 3–4     | 5–6     | befriedigend / ausreichend    |
-| ≥ 18%       | 4–5     | 2–4     | ausreichend / mangelhaft      |
-| < 18%       | 5–6     | 0–1     | mangelhaft / ungenügend       |
+| ≥ 80%       | 1–2     | 12–15   | sehr gut / gut                |
+| ≥ 65%       | 2–3     | 9–11    | gut / befriedigend            |
+| ≥ 50%       | 3       | 7–8     | befriedigend                  |
+| ≥ 40%       | 3–4     | 5–6     | befriedigend / ausreichend    |
+| ≥ 25%       | 4–5     | 2–4     | ausreichend / mangelhaft      |
+| < 25%       | 5–6     | 0–1     | mangelhaft / ungenügend       |
+
+Ein Schüler ganz ohne Einträge landet also bei 50 % = „3". Das ist gewollt:
+unauffällig heißt befriedigend. Wer darüber liegen soll, braucht regelmäßig „+".
+Wer nie mitmacht, obwohl er angesprochen wird, bekommt dafür ein „−".
+Mit den Daten vom 2026-09-17 hatten erst 30 Schüler 6 anwesende Stunden (fast
+alle 8a Englisch). Verteilung von „1–2" bis „5–6": 4 / 3 / 17 / 4 / 2 / 0. Vorher
+waren es 21 / 13 / 1 / 0 / 0 / 0. Dass sich so viele bei „3" sammeln, liegt an den
+wenigen Stunden bisher. Nach ein paar Wochen mehr Daten die Schwellen noch einmal
+gegenprüfen.
 
 **Korrektur** — Vokabeltests, HA-Quote, Material-Quote verschieben das Basis-Band
 danach um maximal ±1 Zeile insgesamt (Effekte werden addiert, dann gedeckelt —

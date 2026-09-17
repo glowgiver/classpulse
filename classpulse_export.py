@@ -131,25 +131,54 @@ SHEET_BULLETS = {
     ],
 }
 
+# ── STUNDEN-SCORE — Spiegel von getLessonStats in index.html. Einheit ist die
+#    anwesende Stunde, nicht der Eintrag: nur "+" = 1, nur "−" = 0, gemischt
+#    anteilig, ohne Eintrag = neutral (0,5). Pro Eintrag gezählt landete fast
+#    jeder bei 100 % "+", weil Beobachtungen Momentaufnahmen sind und nichts
+#    einzutragen nichts kostete. ──────────────────────────────────────────────
+MIN_LESSONS   = 6
+NEUTRAL_SCORE = 0.5
+
+def lesson_score(st, crit_ids=None):
+    """Score über alle anwesenden Stunden; crit_ids schränkt auf einen Bereich ein
+    (Stunden ohne Eintrag in diesem Bereich zählen dann neutral)."""
+    present = st["lessons_present"]
+    if not present:
+        return None
+    scores = []
+    for lesson in st["rated_lessons"]:
+        p = sum(v[0] for cid, v in lesson.items() if crit_ids is None or cid in crit_ids)
+        n = sum(v[1] for cid, v in lesson.items() if crit_ids is None or cid in crit_ids)
+        if p + n:
+            scores.append(p / (p + n))
+    return (sum(scores) + NEUTRAL_SCORE * (present - len(scores))) / present
+
+def obs_totals(st):
+    """(pos, neg) pro Kriterium über alle Stunden — für Tendenzen und die Klassenliste."""
+    totals = {}
+    for lesson in st["rated_lessons"]:
+        for cid, (p, n) in lesson.items():
+            tp, tn = totals.get(cid, (0, 0))
+            totals[cid] = (tp + p, tn + n)
+    return totals
+
 # ── SKALA (5 Spalten des Original-Blatts) — dieselben Schwellen wie der
-#    Notenvorschlag in der App (90/75/55/35%), nur ohne die unterste 18%-
-#    Trennung, weil hier nur 5 statt 6 Stufen zur Verfügung stehen.
-#    BEREICH_MIN_OBS: ohne Mindestmenge könnte ein einzelnes "+" am zweiten
-#    Schultag schon "in besonderem Maße" auslösen — dieselbe Sorte Fehler,
-#    vor der MIN_ENTRIES/MIN_DAYS beim Notenvorschlag schon schützt, hier nur
-#    pro Bereich statt für den ganzen Kurs. 4 ist eine eigene Setzung (nicht
-#    mit Philipp einzeln abgestimmt) — bei Bedarf anpassen. ──────────────────
+#    Notenvorschlag (80/65/50/40%), nur ohne die unterste 25%-Trennung, weil
+#    hier nur 5 statt 6 Stufen zur Verfügung stehen. Neutral (0,5) landet in
+#    "weitgehend", der Mitte.
+#    BEREICH_MIN_OBS: ein Kreuz braucht trotzdem mindestens so viele echte
+#    Einträge im Bereich — sonst stünde auf dem Bogen ein Kreuz, das nur aus
+#    neutralen Stunden besteht. 4 ist eine eigene Setzung (nicht mit Philipp
+#    einzeln abgestimmt) — bei Bedarf anpassen. ─────────────────────────────
 BEREICH_MIN_OBS = 4
 
-def scale_index(pos, neg):
-    total = pos + neg
-    if total < BEREICH_MIN_OBS:
+def scale_index(score, entry_count, lessons_present):
+    if score is None or entry_count < BEREICH_MIN_OBS or lessons_present < MIN_LESSONS:
         return None
-    ratio = pos / total
-    if ratio >= 0.90: return 4
-    if ratio >= 0.75: return 3
-    if ratio >= 0.55: return 2
-    if ratio >= 0.35: return 1
+    if score >= 0.80: return 4
+    if score >= 0.65: return 3
+    if score >= 0.50: return 2
+    if score >= 0.40: return 1
     return 0
 
 # ── NOTENVORSCHLAG — exakter Spiegel von getGradeProposal in index.html,
@@ -170,22 +199,20 @@ GRADE_BANDS_PUNKTE = [
     ("2–4",   "ausreichend / mangelhaft"),
     ("0–1",   "mangelhaft / ungenügend"),
 ]
-MIN_ENTRIES, MIN_DAYS = 6, 3
-
 # Notenpunkte werden am Ende als eine Zahl ins Zeugnis eingetragen, nicht als
 # Band — anders als Drittelnoten, wo "2+/2/2−" die Bandbreite schon ausdrückt.
 # Rein interpolierte Zusatzangabe, NUR für notenformat "punkte": innerhalb des
-# angezeigten Bands (nach Korrektur!) wird die Ratio auf die Punktspanne des
+# angezeigten Bands (nach Korrektur!) wird der Score auf die Punktspanne des
 # Bands abgebildet — nicht das Basis-Band, damit die Zahl nie außerhalb dessen
 # liegt, was tatsächlich gedruckt steht. (ratio_lo, ratio_hi, punkte_lo, punkte_hi),
 # dieselbe Reihenfolge wie GRADE_BANDS_PUNKTE/base_band_index.
 PUNKTE_INTERP_BOUNDS = [
-    (0.90, 1.00, 12, 15),
-    (0.75, 0.90,  9, 11),
-    (0.55, 0.75,  7,  8),
-    (0.35, 0.55,  5,  6),
-    (0.18, 0.35,  2,  4),
-    (0.00, 0.18,  0,  1),
+    (0.80, 1.00, 12, 15),
+    (0.65, 0.80,  9, 11),
+    (0.50, 0.65,  7,  8),
+    (0.40, 0.50,  5,  6),
+    (0.25, 0.40,  2,  4),
+    (0.00, 0.25,  0,  1),
 ]
 
 def interpolate_punkte(ratio, band_idx):
@@ -193,12 +220,12 @@ def interpolate_punkte(ratio, band_idx):
     r = min(max(ratio, lo_r), hi_r)
     return round(lo_p + (r - lo_r) / (hi_r - lo_r) * (hi_p - lo_p))
 
-def base_band_index(ratio):
-    if ratio >= 0.90: return 0
-    if ratio >= 0.75: return 1
-    if ratio >= 0.55: return 2
-    if ratio >= 0.35: return 3
-    if ratio >= 0.18: return 4
+def base_band_index(score):
+    if score >= 0.80: return 0
+    if score >= 0.65: return 1
+    if score >= 0.50: return 2
+    if score >= 0.40: return 3
+    if score >= 0.25: return 4
     return 5
 
 def test_delta(avg, notenformat):
@@ -217,9 +244,9 @@ def hw_delta(quote):
 def material_delta(quote):
     return 1 if (quote is not None and quote < 0.85) else 0
 
-def grade_proposal(entry_count, day_count, ratio, notenformat, test_avg=None, hw_quote=None, mat_quote=None):
-    """None, wenn die Mindestmenge (6 Einträge / 3 Tage) noch nicht erreicht ist."""
-    if entry_count < MIN_ENTRIES or day_count < MIN_DAYS:
+def grade_proposal(lessons_present, ratio, notenformat, test_avg=None, hw_quote=None, mat_quote=None):
+    """None, wenn die Mindestmenge (6 anwesende Stunden) noch nicht erreicht ist."""
+    if lessons_present < MIN_LESSONS or ratio is None:
         return None
     bands = GRADE_BANDS_PUNKTE if notenformat == "punkte" else GRADE_BANDS_NOTEN
     base_idx = base_band_index(ratio)
@@ -236,14 +263,22 @@ def score_label(notenformat):
 # ── STICHPROBEN-DATEN — bei jedem Export durch die echten Beobachtungen aus
 #    dem Backup ersetzen (Kriterien-IDs siehe FREMDSPRACHEN_CRITERIA oben).
 #    hw_quote/material_quote/test_avg: None lassen, wenn die jeweilige
-#    Mindestmenge (6 / 8 / 2) noch nicht erreicht ist. ───────────────────────
+#    Mindestmenge (6 / 8 / 2) noch nicht erreicht ist.
+#    lessons_present: Stunden des Kurses, an denen irgendetwas erfasst wurde und
+#      der Schüler nicht fehlte (Fernunterricht-Tage nur, wenn er an dem Tag
+#      bewertet wurde) — dieselbe Zählung wie getLessonStats in index.html.
+#    rated_lessons: eine Liste pro Stunde MIT Eintrag, {kriterium: (+, −)}.
+#      Stunden ohne Eintrag stehen NICHT drin — sie ergeben sich aus
+#      lessons_present und zählen neutral. ─────────────────────────────────────
 STUDENTS = [
     {
         "name": "Ahuja, Priya",
-        "observations": {
-            "fs1":(8,1), "fs2":(6,2), "fs10":(7,1), "fs11":(5,2),
-            "fs12":(6,1), "fs13":(7,0), "fs5":(5,3), "fs9":(6,2), "fs14":(7,1),
-        },
+        "lessons_present": 20,
+        "rated_lessons":
+            [{"fs1":(1,0), "fs2":(1,0), "fs12":(1,0)}] * 8 +
+            [{"fs10":(1,0), "fs9":(1,0), "fs14":(1,0)}] * 6 +
+            [{"fs5":(1,1), "fs13":(1,0)}] * 2 +
+            [{"fs9":(0,1)}],
         "hw_quote": 0.94, "material_quote": 0.97, "test_avg": 1.7, "absent": 1,
         "notes": [
             ("2026-09-14", "Sehr starke Beteiligung in der Gruppenarbeit."),
@@ -252,10 +287,12 @@ STUDENTS = [
     },
     {
         "name": "Bekele, Samuel",
-        "observations": {
-            "fs1":(3,5), "fs2":(2,4), "fs10":(2,3), "fs11":(1,4),
-            "fs12":(3,3), "fs13":(2,4), "fs5":(3,4), "fs9":(1,5), "fs14":(2,4),
-        },
+        "lessons_present": 18,
+        "rated_lessons":
+            [{"fs1":(0,1), "fs9":(0,1)}] * 5 +
+            [{"fs2":(1,1), "fs12":(0,1)}] * 3 +
+            [{"fs5":(0,1), "fs13":(0,1)}] * 3 +
+            [{"fs10":(1,0)}] * 2,
         "hw_quote": 0.51, "material_quote": 0.68, "test_avg": 4.3, "absent": 4,
         "notes": [
             ("2026-09-22", "Wechselt häufig ins Deutsche, mehrfach angesprochen."),
@@ -264,10 +301,10 @@ STUDENTS = [
     },
     {
         "name": "Chen, Mei-Lin",
-        "observations": {
-            "fs1":(6,2), "fs2":(5,1), "fs10":(6,1), "fs11":(4,2),
-            "fs12":(6,0), "fs13":(5,1), "fs5":(7,1), "fs9":(5,2), "fs14":(6,1),
-        },
+        "lessons_present": 19,
+        "rated_lessons":
+            [{"fs2":(1,0), "fs5":(1,0), "fs12":(1,0), "fs14":(1,0)}] * 9 +
+            [{"fs10":(1,0), "fs13":(1,0), "fs9":(1,0)}] * 2,
         "hw_quote": 1.00, "material_quote": 1.00, "test_avg": 1.3, "absent": 0,
         "notes": [("2026-10-08", "Exzellente Vorbereitung, HA immer vollständig.")],
     },
@@ -299,12 +336,6 @@ def make_styles():
         "footnote":      ParagraphStyle("fn",  fontName="Montserrat-Italic",  fontSize=8,  textColor=GREY_TEXT, spaceBefore=2*mm, spaceAfter=3*mm),
         "footer_box":    ParagraphStyle("fb",  fontName="Montserrat-SemiBold",fontSize=9.5,textColor=BLACK, leading=13),
     }
-
-def obs_ratio(observations):
-    """Gesamt-Ratio über alle Kriterien eines Schülers (für den Notenvorschlag)."""
-    pos = sum(p for p, n in observations.values())
-    neg = sum(n for p, n in observations.values())
-    return pos, neg
 
 def section_counts(observations, criteria, bereich):
     pos = neg = 0
@@ -349,13 +380,8 @@ def build_overview(styles, criteria):
     rows = [hdr]
 
     for st in STUDENTS:
-        obs = st["observations"]
-        pos, neg = obs_ratio(obs)
-        total = pos + neg
-        days = MIN_DAYS  # Stichprobendaten haben kein Datum je Eintrag — echte Exporte zählen Tage.
-        entry_count = total
-        ratio = pos / total if total else 0
-        proposal = grade_proposal(entry_count, days, ratio, NOTENFORMAT,
+        obs = obs_totals(st)
+        proposal = grade_proposal(st["lessons_present"], lesson_score(st), NOTENFORMAT,
                                    st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
         if proposal:
             gesamt = f"{score_label(NOTENFORMAT)} {proposal['grade']}"
@@ -417,12 +443,14 @@ def build_official_sheet(st, criteria, styles):
     story.append(Paragraph(SHEET_TITLE, styles["sheet_title"]))
     story.append(Paragraph(SHEET_INTRO, styles["sheet_intro"]))
 
+    obs = obs_totals(st)
     for bereich in BEREICHE:
         story.append(Paragraph(bereich.upper() if bereich != "Sprache & Komm."
                                 else "SPRACHE UND KOMMUNIKATION", styles["area_label"]))
 
-        pos, neg = section_counts(st["observations"], criteria, bereich)
-        idx = scale_index(pos, neg)
+        pos, neg = section_counts(obs, criteria, bereich)
+        crit_ids = {cid for cid, _, b in criteria if b == bereich}
+        idx = scale_index(lesson_score(st, crit_ids), pos + neg, st["lessons_present"])
 
         col_w = [58*mm] + [23.4*mm]*5
         header_row = [Paragraph("Einschätzung der <b>Schülerin</b>/des <b>Schülers</b>", styles["table_header_sm"])] + \
@@ -452,7 +480,7 @@ def build_official_sheet(st, criteria, styles):
     if others:
         lines = []
         for cid, short in others:
-            p, n = st["observations"].get(cid, (0, 0))
+            p, n = obs.get(cid, (0, 0))
             label, tc = cell_tendency(p, n)
             hex_tc = tc.hexval()[2:]
             lines.append(f'{short}: <font color="#{hex_tc}"><b>{label}</b></font>')
@@ -461,10 +489,7 @@ def build_official_sheet(st, criteria, styles):
             styles["table_dim"]))
         story.append(Spacer(1, 2*mm))
 
-    pos, neg = obs_ratio(st["observations"])
-    total = pos + neg
-    ratio = pos / total if total else 0
-    proposal = grade_proposal(total, MIN_DAYS, ratio, NOTENFORMAT,
+    proposal = grade_proposal(st["lessons_present"], lesson_score(st), NOTENFORMAT,
                                st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
     # override_grade: das PÄDAGOGISCH entschiedene Ergebnis, nachdem die
     # Lehrkraft die rechnerischen Vorschläge (siehe preview_grades()) gesehen
@@ -567,10 +592,8 @@ def build_pdf(path):
 def preview_grades(students, notenformat, criteria_type_label=""):
     print(f"\n── Vorschau {criteria_type_label} ──".rstrip())
     for st in students:
-        pos, neg = obs_ratio(st["observations"])
-        total = pos + neg
-        ratio = pos / total if total else 0
-        proposal = grade_proposal(total, MIN_DAYS, ratio, notenformat,
+        score = lesson_score(st)
+        proposal = grade_proposal(st["lessons_present"], score, notenformat,
                                    st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
         if proposal:
             rechnerisch = f"{score_label(notenformat)} {proposal['grade']} ({proposal['label']})"
@@ -580,7 +603,9 @@ def preview_grades(students, notenformat, criteria_type_label=""):
             rechnerisch = "noch nicht möglich"
         override = f"  →  ÜBERSCHRIEBEN MIT: {st['override_grade']}" if st.get("override_grade") else ""
         selbst = f"  ·  Selbsteinschätzung: {st['student_grade']}" if st.get("student_grade") else ""
-        print(f"{st['name']:<28} {total:>2} Einträge   {rechnerisch}{override}{selbst}")
+        rated = len(st["rated_lessons"])
+        score_txt = f"{score:.2f}" if score is not None else "–"
+        print(f"{st['name']:<28} {st['lessons_present']:>2} Std. ({rated} bewertet, Score {score_txt})   {rechnerisch}{override}{selbst}")
     print()
 
 if __name__ == "__main__":
