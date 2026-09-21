@@ -1608,8 +1608,8 @@ function App() {
   // Jeder Eintrag zählt, eine anwesende Stunde ohne Eintrag zählt wie ein
   // neutraler Eintrag (0,5). Höchstens MAX_PER_LESSON Einträge pro Stunde, damit
   // eine einzelne Stunde die unauffälligen nicht einfach überstimmt.
-  // Fernunterricht-Tage zählen nur für Schüler, die an dem Tag bewertet wurden —
-  // wer nicht im Raum sein konnte, war nicht "unauffällig".
+  // Fernunterricht-Tage zählen nur für Schüler, die an dem Tag bewertet oder bei
+  // der HA markiert wurden — wer nicht angesehen wurde, war nicht "unauffällig".
   const MAX_PER_LESSON = 3;
   // Eine Doppelstunde ist doppelt so viel Gelegenheit mitzumachen und zählt
   // deshalb doppelt — auch als neutrale Stunde. Maßgeblich ist der Stundenplan
@@ -1632,8 +1632,13 @@ function App() {
     (lessonDatesByCourse.get(courseName) || new Set()).forEach(date => {
       const key = `${date}_${courseName}`;
       if ((absences[key] || []).includes(studentId)) return;
-      const d = byDate.get(date);
-      if (remoteDays[key] && !d) return;
+      let d = byDate.get(date);
+      // Fernunterricht: nur wer bewertet oder mit einem HA-Status markiert wurde,
+      // zählt überhaupt. Eine nicht gemachte Aufgabe zählt als ein "−" — wer sie
+      // konsequent nicht macht, rutscht damit über mehrere Tage nach unten.
+      const remoteHw = remoteDays[key] ? homework[key]?.[studentId] : undefined;
+      if (remoteDays[key] && !d && !remoteHw) return;
+      if (remoteHw === "not") d = { pos: d?.pos || 0, neg: (d?.neg || 0) + 1 };
       lessons += 1;
       const units = getLessonUnits(courseName, date);
       if (d) {

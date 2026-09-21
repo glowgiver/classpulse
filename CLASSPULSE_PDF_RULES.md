@@ -286,7 +286,12 @@ unauffälligen Stunden einfach überstimmt. `note` und `skip` sind keine Bewertu
 2. Pro Schüler: Stunden, an denen seine ID in `absences[DATUM_Kurs]` steht,
    fallen weg.
 3. Tage in `remoteDays` (Fernunterricht) zählen nur, wenn der Schüler an dem Tag
-   eine Bewertung hat. Wer nicht im Raum sein konnte, war nicht „unauffällig".
+   eine Bewertung oder einen HA-Status (`homework[DATUM_Kurs][id]`) hat. Wer nicht
+   angesehen wurde, war nicht „unauffällig". Steht der HA-Status auf `not`, kommt
+   ein „−" zu den Einträgen des Tages dazu (in `rated_lessons` als Kriterium
+   `"ha": (0, 1)`). `half` und `done` machen die Stunde nur zählbar (neutral,
+   falls sonst kein Eintrag). Wer die Aufgaben konsequent nicht macht, sammelt
+   so pro Fernunterricht-Tag ein „−" und rutscht nach unten.
 4. Ergebnis → `lessons_present`. Die Stunden mit Bewertung → `rated_lessons`,
    eine Liste mit `{kriterium: (+, −)}` pro Stunde.
 
@@ -335,6 +340,8 @@ dort schaut Philipp nur stichprobenartig, deshalb:
   Standardwert „hier" und würden die Quote aufblähen.
 - **HA-Quote:** zählt nur für Schüler, die an dem Tag einen HA-Status haben. Wer
   nicht angesehen wurde, hat keinen Eintrag und zählt weder für noch gegen.
+  Ein `not` wirkt zusätzlich im Stunden-Score als „−" (siehe oben) — wer
+  konsequent nichts abgibt, wird also doppelt erfasst: im Score und in der Quote.
 - **Beobachtungen:** siehe Stunden-Score oben (nur für an dem Tag bewertete Schüler).
 
 Disclaimer immer: „Pädagogische Einschätzung der Lehrkraft entscheidet."
