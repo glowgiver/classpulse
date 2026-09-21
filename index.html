@@ -473,6 +473,9 @@ function App() {
   // im iServ-Aufgabenmodul). Nur ein Flag pro Tag/Kurs, kein Zähler — dient als
   // Hinweis im Klassenbuch, nicht als eigene Auswertung.
   const [remoteDays,   setRemoteDays]   = useState(() => loadData("obs_remoteDays", {}));
+  // Schalter: unentschuldigte Fehlstunden zählen nach ABSENCE_DEADLINE_DAYS Tagen
+  // als "−" im Notenvorschlag. Standardmäßig aus, bis die Fristliste durchgesehen ist.
+  const [absenceRule,  setAbsenceRule]  = useState(() => loadData("obs_absenceRule", false));
   // Tests: eigene Liste, {id, course, date, title, grades:{studentId: note}}.
   const [tests,         setTests]        = useState(() => loadData("obs_tests", []));
 
@@ -824,6 +827,7 @@ function App() {
   useEffect(() => saveData("obs_homeworkAssigned", homeworkAssigned), [homeworkAssigned]);
   useEffect(() => saveData("obs_materials",    materials),    [materials]);
   useEffect(() => saveData("obs_remoteDays",   remoteDays),   [remoteDays]);
+  useEffect(() => saveData("obs_absenceRule",  absenceRule),  [absenceRule]);
   useEffect(() => saveData("obs_tests",        tests),        [tests]);
 
   // Keep the running session recoverable; clear it once the lesson is ended.
@@ -1384,7 +1388,7 @@ function App() {
   };
 
   const downloadBackup = (filenamePrefix) => {
-    const data = { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences, excusedMaterial, lateArrivals, remoteDays };
+    const data = { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences, excusedMaterial, lateArrivals, remoteDays, absenceRule };
     const backup = {
       version: "1.0",
       exportDate: new Date().toISOString(),
@@ -1424,6 +1428,7 @@ function App() {
         const exm = backup.data.excusedMaterial  && typeof backup.data.excusedMaterial  === "object" ? backup.data.excusedMaterial  : {};
         const lta = backup.data.lateArrivals     && typeof backup.data.lateArrivals     === "object" ? backup.data.lateArrivals     : {};
         const rmd = backup.data.remoteDays       && typeof backup.data.remoteDays       === "object" ? backup.data.remoteDays       : {};
+        const arl = backup.data.absenceRule === true;
         if (!Array.isArray(c) || !Array.isArray(o) ||
             !h || typeof h !== "object" || !a || typeof a !== "object")
           throw new Error("Daten unvollständig oder beschädigt");
@@ -1451,6 +1456,7 @@ function App() {
         setExcusedMaterial(exm);
         setLateArrivals(lta);
         setRemoteDays(rmd);
+        setAbsenceRule(arl);
         saveData("obs_courses",      cWithSlots);
         saveData("obs_observations", o);
         saveData("obs_homework",     h);
@@ -1463,6 +1469,7 @@ function App() {
         saveData("obs_excusedMaterial",  exm);
         saveData("obs_lateArrivals",     lta);
         saveData("obs_remoteDays",       rmd);
+        saveData("obs_absenceRule",      arl);
         setBackupImportOK(true);
         setBackupError("");
         setTimeout(() => setBackupImportOK(false), 3000);
@@ -1621,6 +1628,15 @@ function App() {
     return (course?.slots || []).some(sl => sl.day === day && sl.type === "double") ? 2 : 1;
   };
 
+  // Tage seit dem Fehltag; wer 14 Tage danach noch nicht entschuldigt ist, hat
+  // die Stunde unentschuldigt versäumt (Leistung nicht erbracht = eine 6).
+  const ABSENCE_DEADLINE_DAYS = 14;
+  const ABSENCE_WARN_DAYS     = 10;
+  const daysSince = (date) => Math.floor((new Date(`${dateKey()}T12:00:00`) - new Date(`${date}T12:00:00`)) / 86400000);
+  const isAbsenceExpired = (key, studentId) =>
+    absenceRule && !remoteDays[key] && !(excusedAbsences[key] || []).includes(studentId)
+    && daysSince(key.slice(0, key.indexOf("_"))) > ABSENCE_DEADLINE_DAYS;
+
   const getLessonStats = (courseName, studentId) => {
     const byDate = new Map();
     obsFor(courseName, studentId).filter(isRating).forEach(o => {
@@ -1631,7 +1647,13 @@ function App() {
     let lessons = 0, rated = 0, sum = 0, weight = 0;
     (lessonDatesByCourse.get(courseName) || new Set()).forEach(date => {
       const key = `${date}_${courseName}`;
-      if ((absences[key] || []).includes(studentId)) return;
+      if ((absences[key] || []).includes(studentId)) {
+        // Abgelaufen unentschuldigt: die Stunde zählt mit dem Wert eines "−"
+        // (Doppelstunde doppelt). Sie zählt aber weder als anwesende noch als
+        // bewertete Stunde — sonst würde allein ein Fehltag einen Vorschlag freischalten.
+        if (isAbsenceExpired(key, studentId)) weight += getLessonUnits(courseName, date);
+        return;
+      }
       let d = byDate.get(date);
       // Fernunterricht: nur wer bewertet oder mit einem HA-Status markiert wurde,
       // zählt überhaupt. Eine nicht gemachte Aufgabe zählt als ein "−" — wer sie
@@ -3250,6 +3272,54 @@ function App() {
         <Icon name="settings" size={16} color={C.textDim} /> Kurse verwalten (anlegen, umbenennen, Stundenplan)
       </button>
 
+      {/* Fristen für Entschuldigungen: hier siehst du, was bald abläuft, bevor die
+          Regel es als "−" in den Notenvorschlag rechnet. */}
+      <div style={S.sectionLbl}>Unentschuldigte Fehlstunden</div>
+      {(() => {
+        const rows = [];
+        Object.entries(absences).forEach(([key, ids]) => {
+          if (remoteDays[key]) return;
+          const i = key.indexOf("_");
+          const date = key.slice(0, i), courseName = key.slice(i + 1);
+          const c = courses.find(x => x.name === courseName);
+          const open = ids.filter(id => !(excusedAbsences[key] || []).includes(id) && c?.students.some(s => s.id === id));
+          if (!open.length) return;
+          const age = daysSince(date);
+          if (age < ABSENCE_WARN_DAYS) return;
+          rows.push({ key, date, courseName, names: open.map(id => c.students.find(s => s.id === id).name), age, expired: age > ABSENCE_DEADLINE_DAYS });
+        });
+        rows.sort((a, b) => b.age - a.age);
+        return (
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px" }}>
+            <div style={{ fontSize:13, color:C.textDim, lineHeight:"1.5", marginBottom:10 }}>
+              Wer {ABSENCE_DEADLINE_DAYS} Tage nach dem Fehltag nicht entschuldigt ist, hat die Stunde
+              unentschuldigt versäumt. Ist die Regel an, zählt sie im Notenvorschlag wie ein „−“
+              (Doppelstunde doppelt). Erst die Liste durchsehen, dann einschalten.
+            </div>
+            <button style={{ ...S.btnSm(absenceRule ? "amber" : "ghost"), width:"100%", marginBottom: rows.length ? 10 : 0 }}
+              onClick={() => setAbsenceRule(v => !v)}>
+              {absenceRule ? "✓ Regel ist an — abgelaufene Fehlstunden zählen als „−“" : "Regel ist aus — antippen zum Einschalten"}
+            </button>
+            {rows.length === 0 && (
+              <div style={{ fontSize:13, color:C.textMuted, marginTop:10 }}>Nichts, was bald abläuft oder abgelaufen ist.</div>
+            )}
+            {rows.map(r => (
+              <button key={r.key} onClick={() => { openBackfill(r.courseName, r.date); setShowBackfill(true); }}
+                style={{ display:"block", width:"100%", textAlign:"left", background:"none", border:"none",
+                         borderTop:`1px solid ${C.border}`, padding:"9px 0", cursor:"pointer", WebkitAppearance:"none" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}>
+                  <span style={{ fontSize:14, fontWeight:600, color:C.text }}>{fmtLogDate(r.date)} · {r.courseName}</span>
+                  <span style={{ fontSize:12, fontWeight:600, color: r.expired ? C.red : C.amber, flexShrink:0 }}>
+                    {r.expired ? `abgelaufen (${r.age} Tage)` : `noch ${ABSENCE_DEADLINE_DAYS - r.age + 1} Tage`}
+                  </span>
+                </div>
+                <div style={{ fontSize:13, color:C.textDim }}>{r.names.join(", ")}</div>
+              </button>
+            ))}
+          </div>
+        );
+      })()}
+
       <div style={S.sectionLbl}>CSV / PDF Export</div>
       <button style={{ ...S.btn("ghost"), display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}
         onClick={() => { setShowExport(true); setCopyOK(false); }}>
@@ -3261,7 +3331,7 @@ function App() {
         onClick={() => {
           if (window.confirm("Wirklich ALLE Daten löschen? Dies kann nicht rückgängig gemacht werden.")) {
             ["obs_courses","obs_observations","obs_homework","obs_absences","obs_topics",
-             "obs_materials","obs_tests","obs_homeworkAssigned","obs_excusedAbsences","obs_excusedMaterial","obs_lateArrivals","obs_remoteDays",
+             "obs_materials","obs_tests","obs_homeworkAssigned","obs_excusedAbsences","obs_excusedMaterial","obs_lateArrivals","obs_remoteDays","obs_absenceRule",
              "obs_session","obs_lastAutoBackup","obs_nextAutoBackupDays"].forEach(k => localStorage.removeItem(k));
             window.location.reload();
           }

@@ -285,6 +285,15 @@ unauffälligen Stunden einfach überstimmt. `note` und `skip` sind keine Bewertu
    Beobachtung (`observations`) in diesem Kurs.
 2. Pro Schüler: Stunden, an denen seine ID in `absences[DATUM_Kurs]` steht,
    fallen weg.
+2b. **Unentschuldigte Fehlstunden** (nur wenn `absenceRule: true` im Backup): Steht
+   die ID in `absences[DATUM_Kurs]`, ist nicht in `excusedAbsences[DATUM_Kurs]`
+   und liegt der Tag mehr als 14 Tage zurück, zählt die Stunde als „6", also wie
+   ein „−" (Doppelstunde doppelt). In `rated_lessons` als
+   `{"_units": u, "abs": (0, u)}` eintragen — sie zählt für die Gewichtung, aber
+   **nicht** für `lessons_present` (sonst würde allein ein Fehltag einen Vorschlag
+   freischalten). Ist `absenceRule` aus oder fehlt, fallen Fehlstunden einfach
+   heraus. Die Fristliste in der App (Mehr → Unentschuldigte Fehlstunden) zeigt ab
+   Tag 10, was abläuft.
 3. Tage in `remoteDays` (Fernunterricht) zählen nur, wenn der Schüler an dem Tag
    eine Bewertung oder einen HA-Status (`homework[DATUM_Kurs][id]`) hat. Wer nicht
    angesehen wurde, war nicht „unauffällig". Steht der HA-Status auf `not`, kommt

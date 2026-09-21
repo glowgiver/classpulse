@@ -143,7 +143,8 @@ MAX_PER_LESSON = 3
 def lessons_present(st):
     """Anwesende Stunden = Tage mit Eintrag + Tage ohne. Doppelstunden sind hier
     ein Tag; ihr doppeltes Gewicht steckt in den units, nicht in dieser Zahl."""
-    return len(st["rated_lessons"]) + len(st["unrated_lessons"])
+    # "abs" = abgelaufene unentschuldigte Fehlstunde: zählt fürs Gewicht, nicht als anwesend.
+    return sum(1 for l in st["rated_lessons"] if "abs" not in l) + len(st["unrated_lessons"])
 
 def lesson_score(st, crit_ids=None):
     """Score über alle anwesenden Stunden; crit_ids schränkt auf einen Bereich ein
@@ -154,6 +155,11 @@ def lesson_score(st, crit_ids=None):
     neutral_units = sum(st["unrated_lessons"])
     for lesson in st["rated_lessons"]:
         units = lesson.get("_units", 1)
+        if "abs" in lesson:
+            # Nur im Gesamtscore ein "−"; ein Bereichs-Kreuz kennt keine Fehlstunden.
+            if crit_ids is None:
+                weight += units
+            continue
         p = sum(v[0] for cid, v in lesson.items() if cid != "_units" and (crit_ids is None or cid in crit_ids))
         n = sum(v[1] for cid, v in lesson.items() if cid != "_units" and (crit_ids is None or cid in crit_ids))
         if p + n:
