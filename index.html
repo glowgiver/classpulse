@@ -680,24 +680,33 @@ function App() {
     });
     // Gleiche Logik wie die Live-Vorbereitungsphase: nur wer an diesem Tag da
     // war, bekommt einen Eintrag; ohne Ausnahme zählt "gemacht".
+    // Fernunterricht: nur ausdrücklich markierte Schüler, sonst Standard "erledigt".
     setHomework(prev => {
       const next = { ...prev };
-      if (backfillHwGiven && present.length) {
-        const record = {};
-        present.forEach(st => { record[st.id] = backfillHwStatus[st.id] || "done"; });
-        next[key] = record;
-      } else {
-        delete next[key];
+      const record = {};
+      if (backfillHwGiven) {
+        present.forEach(st => {
+          const status = backfillRemote ? backfillHwStatus[st.id] : (backfillHwStatus[st.id] || "done");
+          if (status) record[st.id] = status;
+        });
       }
+      if (Object.keys(record).length) next[key] = record; else delete next[key];
       return next;
     });
-    // Material wird jede Stunde geprüft, unabhängig von HA — genau wie live.
-    const matRecord = {};
-    present.forEach(st => { matRecord[st.id] = backfillMaterialStatus[st.id] || "here"; });
-    setMaterials(prev => ({ ...prev, [key]: matRecord }));
-    // Entschuldigt kann nur bleiben, wer nach dieser Speicherung tatsächlich als "fehlt" markiert ist.
-    const missingIds = Object.entries(matRecord).filter(([,v]) => v === "missing").map(([id]) => id);
-    setExcusedMaterial(prev => ({ ...prev, [key]: backfillExcusedMaterial.filter(id => missingIds.includes(id)) }));
+    if (backfillRemote) {
+      // Auf einem Fernunterricht-Tag gibt es kein Material — sonst würden die
+      // Standardwerte "hier" für nie angesehene Schüler die Quote aufblähen.
+      setMaterials(prev => { const next = { ...prev }; delete next[key]; return next; });
+      setExcusedMaterial(prev => { const next = { ...prev }; delete next[key]; return next; });
+    } else {
+      // Material wird jede Stunde geprüft, unabhängig von HA — genau wie live.
+      const matRecord = {};
+      present.forEach(st => { matRecord[st.id] = backfillMaterialStatus[st.id] || "here"; });
+      setMaterials(prev => ({ ...prev, [key]: matRecord }));
+      // Entschuldigt kann nur bleiben, wer nach dieser Speicherung tatsächlich als "fehlt" markiert ist.
+      const missingIds = Object.entries(matRecord).filter(([,v]) => v === "missing").map(([id]) => id);
+      setExcusedMaterial(prev => ({ ...prev, [key]: backfillExcusedMaterial.filter(id => missingIds.includes(id)) }));
+    }
     setRemoteDays(prev => {
       const next = { ...prev };
       if (backfillRemote) next[key] = true; else delete next[key];
@@ -711,7 +720,10 @@ function App() {
     setBackfillHwGiven(prev => !prev);
   };
 
+  // Beim Einschalten gleich die HA-Kontrolle mit anmachen — auf einem
+  // Fernunterricht-Tag ist das der Hauptzweck; einzeln wieder abwählbar.
   const toggleBackfillRemote = () => {
+    if (!backfillRemote) setBackfillHwGiven(true);
     setBackfillRemote(prev => !prev);
   };
 
@@ -1324,8 +1336,8 @@ function App() {
       const matPct = matQ.count > 0 ? `${Math.round(matQ.quote*100)}%` : "-";
       let excusedMatCount = 0;
       Object.entries(materials).forEach(([key, record]) => {
-        if (!key.endsWith(`_${course.name}`) || record[st.id] !== "missing") return;
-        if (isMaterialExcused(key, st.id)) excusedMatCount++;
+        if (!key.endsWith(`_${course.name}`) || record[st.id] !== "missing" || remoteDays[key]) return;
+        if ((excusedMaterial[key] || []).includes(st.id)) excusedMatCount++;
       });
       const testAvg = getTestAverage(course.name, st.id);
       const testStr = testAvg ? `${Math.round(testAvg.avg*10)/10}` : "-";
@@ -1540,7 +1552,10 @@ function App() {
     return { count: total, quote: total ? sum / total : null };
   };
 
-  const isMaterialExcused = (key, studentId) => (excusedMaterial[key] || []).includes(studentId);
+  // Fernunterricht-Tage zählen nicht für die Material-Quote: dort wird nur
+  // stichprobenartig geschaut, und ältere Einträge tragen für alle den
+  // Standardwert "hier".
+  const isMaterialExcused = (key, studentId) => !!remoteDays[key] || (excusedMaterial[key] || []).includes(studentId);
 
   const getTestAverage = (courseName, studentId) => {
     const grades = tests
@@ -3014,7 +3029,7 @@ function App() {
         .map(id => c?.students.find(s => s.id === id)?.name)
         .filter(Boolean);
       const excusedMatIds = excusedMaterial[k] || [];
-      const materialNames = Object.entries(materials[k] || {})
+      const materialNames = remoteDays[k] ? [] : Object.entries(materials[k] || {})
         .filter(([, status]) => status === "missing")
         .map(([id]) => {
           const name = c?.students.find(s => s.id === id)?.name;
@@ -3425,13 +3440,18 @@ function App() {
                      borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:8,
                      boxSizing:"border-box" }} />
 
-          {/* Für Krankheitstage mit Aufgabe im iServ-Aufgabenmodul: reine
-              Kennzeichnung, damit im Klassenbuch sichtbar bleibt, dass die
-              Stunde nicht live stattfand — ändert nichts an Ratio/Auswertung. */}
-          <button style={{ ...S.btnSm(backfillRemote ? "amber" : "ghost"), width:"100%", marginBottom:8 }}
+          {/* Für Krankheitstage mit Aufgabe im iServ-Aufgabenmodul. Es wird nur
+              stichprobenartig geschaut — deshalb zählt HA/Beobachtung nur für
+              ausdrücklich markierte Schüler, und Material entfällt. */}
+          <button style={{ ...S.btnSm(backfillRemote ? "amber" : "ghost"), width:"100%", marginBottom: backfillRemote ? 4 : 8 }}
             onClick={toggleBackfillRemote}>
             {backfillRemote ? "✓ Fernunterricht / iServ-Aufgabe (nicht vor Ort)" : "Als Fernunterricht/iServ-Aufgabe kennzeichnen"}
           </button>
+          {backfillRemote && (
+            <div style={{ fontSize:12, color:C.textDim, marginBottom:8, lineHeight:"1.4" }}>
+              Material entfällt. HA und Beobachtung zählen nur für die Schüler, die du markierst.
+            </div>
+          )}
 
           {/* HA-Erledigung erst hier kontrollieren, wenn Zeit ist (z.B. nach dem
               Sichten im iServ-Aufgabenmodul) — unabhängig vom Unterrichtstag. */}
@@ -3450,7 +3470,9 @@ function App() {
           {course.students.map(st => {
             const absent  = backfillAbsent.includes(st.id);
             const excused = backfillExcused.includes(st.id);
-            const hwStatus = backfillHwStatus[st.id] || "done";
+            // Fernunterricht: nur wer ausdrücklich markiert wird, zählt — kein
+            // Standardwert "erledigt" für Schüler, deren Abgabe nicht angesehen wurde.
+            const hwStatus = backfillRemote ? backfillHwStatus[st.id] : (backfillHwStatus[st.id] || "done");
             const setHwStatus = (newStatus) => setBackfillHwStatusFor(st.id, newStatus);
             const matStatus = backfillMaterialStatus[st.id] || "here";
             const materialMissing = matStatus === "missing";
@@ -3477,7 +3499,7 @@ function App() {
                     {absent ? "fehlt" : "da"}
                   </span>
                 </button>
-                {!absent && (
+                {!absent && !backfillRemote && (
                   <div style={{ display:"flex", gap:6, alignItems:"center", marginTop:8 }}>
                     <span style={{ fontSize:11, color:C.textMuted, marginRight:2 }}>Mat.</span>
                     <button style={{ ...S.btnSm(matStatus==="here"?"green":"ghost"), flex:1 }}
@@ -3490,11 +3512,11 @@ function App() {
                   <div style={{ display:"flex", gap:6, alignItems:"center", marginTop:8 }}>
                     <span style={{ fontSize:11, color:C.textMuted, marginRight:2 }}>HA</span>
                     <button style={{ ...S.btnSm(hwStatus==="done"?"green":"ghost"), flex:1 }}
-                      onClick={() => setHwStatus("done")}>✓</button>
+                      onClick={() => setHwStatus(backfillRemote && hwStatus==="done" ? undefined : "done")}>✓</button>
                     <button style={{ ...S.btnSm(hwStatus==="half"?"amber":"ghost"), flex:1 }}
-                      onClick={() => setHwStatus(hwStatus==="half"?"done":"half")}>½</button>
+                      onClick={() => setHwStatus(hwStatus==="half" ? (backfillRemote ? undefined : "done") : "half")}>½</button>
                     <button style={{ ...S.btnSm(hwStatus==="not"?"red":"ghost"), flex:1 }}
-                      onClick={() => setHwStatus(hwStatus==="not"?"done":"not")}>✗</button>
+                      onClick={() => setHwStatus(hwStatus==="not" ? (backfillRemote ? undefined : "done") : "not")}>✗</button>
                   </div>
                 )}
                 {backfillObsActive && !absent && (

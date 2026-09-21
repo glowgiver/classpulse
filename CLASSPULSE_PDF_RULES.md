@@ -328,6 +328,15 @@ Begründung kommt. Entschuldigte Einträge zählen weder für noch gegen die
 Material-Quote — sie fallen aus Zähler und Nenner raus, statt als „hier"
 mitgezählt zu werden.
 
+**Fernunterricht-Tage** (`remoteDays`, iServ-Aufgabe statt Präsenzstunde) —
+dort schaut Philipp nur stichprobenartig, deshalb:
+- **Material-Quote:** solche Tage zählen nicht mit (fallen aus Zähler und Nenner
+  raus, wie entschuldigtes Material). Ältere Einträge tragen für alle Schüler den
+  Standardwert „hier" und würden die Quote aufblähen.
+- **HA-Quote:** zählt nur für Schüler, die an dem Tag einen HA-Status haben. Wer
+  nicht angesehen wurde, hat keinen Eintrag und zählt weder für noch gegen.
+- **Beobachtungen:** siehe Stunden-Score oben (nur für an dem Tag bewertete Schüler).
+
 Disclaimer immer: „Pädagogische Einschätzung der Lehrkraft entscheidet."
 
 ---
