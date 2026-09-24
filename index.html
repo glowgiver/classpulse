@@ -1541,7 +1541,8 @@ function App() {
   // Momentaufnahmen, und eine Stunde ohne Eintrag heißt "unauffällig", nicht
   // "unbekannt". Pro Eintrag gezählt landete fast jeder bei 100 % "+" (Stand
   // 2026-09-17: Median-Ratio 1,00), weil nichts einzutragen nichts kostete.
-  const MIN_LESSONS   = 6;
+  const MIN_LESSONS   = 3;
+  const MIN_RATED     = 2;
   const NEUTRAL_SCORE = 0.5;
 
   // Sechs Bänder, beste zuerst — dieselbe Leiter für Drittelnoten und Punkte,
@@ -1719,10 +1720,14 @@ function App() {
       if (remoteHw === "not") d = { pos: d?.pos || 0, neg: (d?.neg || 0) + 1 };
       lessons += 1;
       const units = getLessonUnits(courseName, date);
+      // "Bewertet" heißt: an dem Tag wurde wirklich etwas über den Schüler
+      // festgehalten (Beobachtung, oder auf einem Fernunterricht-Tag ein HA-Status).
+      // Ein HA-Häkchen an einem normalen Tag zählt nicht, das gilt dort für alle.
+      if (d || remoteHw) rated += 1;
       if (d) {
         const total = d.pos + d.neg;
         const w = Math.min(total, MAX_PER_LESSON * units);
-        rated += 1; weight += w; sum += w * d.pos / total;
+        weight += w; sum += w * d.pos / total;
       } else {
         weight += units; sum += NEUTRAL_SCORE * units;
       }
@@ -1731,8 +1736,8 @@ function App() {
   };
 
   const getGradeProposal = (courseName, studentId) => {
-    const { lessons, score: ratio } = getLessonStats(courseName, studentId);
-    if (lessons < MIN_LESSONS) return null;
+    const { lessons, rated, score: ratio } = getLessonStats(courseName, studentId);
+    if (lessons < MIN_LESSONS || rated < MIN_RATED) return null;
     let baseIndex;
     if      (ratio >= 0.80) baseIndex = 0;
     else if (ratio >= 0.65) baseIndex = 1;
@@ -1757,7 +1762,7 @@ function App() {
 
   const getObsProgress = (courseName, studentId) => {
     const { lessons, rated } = getLessonStats(courseName, studentId);
-    return { lessons, rated, ready: lessons >= MIN_LESSONS };
+    return { lessons, rated, ready: lessons >= MIN_LESSONS && rated >= MIN_RATED };
   };
 
   // ── RENDER: HOME ─────────────────────────────────────────────────────────
@@ -2328,7 +2333,7 @@ function App() {
               <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px", marginTop:20 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
                   <div style={{ fontSize:13, color:C.textDim, fontWeight:700, letterSpacing:"0.06em" }}>ZWISCHENSTAND</div>
-                  <div style={{ fontSize:13, color:C.amber }}>⚠ {prog.lessons} von {MIN_LESSONS} Std. — vorläufig</div>
+                  <div style={{ fontSize:13, color:C.amber }}>⚠ {prog.lessons} Std., {prog.rated} von {MIN_RATED} bewerteten Tagen — vorläufig</div>
                 </div>
                 {critTendencies.length > 0 ? critTendencies.map(t => (
                   <div key={t.crit.id} style={{ display:"flex", justifyContent:"space-between", paddingTop:3 }}>
@@ -2339,7 +2344,7 @@ function App() {
                   <div style={{ fontSize:13, color:C.textMuted }}>Noch keine Kriterien bewertet.</div>
                 )}
                 <div style={{ fontSize:13, color:C.textMuted, marginTop:6 }}>
-                  Notenvorschlag ab {MIN_LESSONS} anwesenden Stunden ·
+                  Notenvorschlag ab {MIN_LESSONS} Stunden und {MIN_RATED} bewerteten Tagen ·
                   Mitarbeit zählt hier {getMitarbeitAnteil(activeCourse)} %.
                 </div>
               </div>
@@ -3023,14 +3028,14 @@ function App() {
                         )
                       ) : (
                         <span style={{ fontSize:13, color:C.textMuted, minWidth:52, textAlign:"right" }}>
-                          {`noch ${MIN_LESSONS - prog.lessons} Std.`}
+                          {prog.lessons < MIN_LESSONS ? `noch ${MIN_LESSONS - prog.lessons} Std.` : `noch ${MIN_RATED - prog.rated} bew. Tag${MIN_RATED - prog.rated > 1 ? 'e' : ''}`}
                         </span>
                       )}
                     </div>
                   );
                 })}
                 <div style={{ fontSize:13, color:C.textMuted, marginTop:8 }}>
-                  Notenvorschlag ab {MIN_LESSONS} anwesenden Stunden · Stunden ohne Eintrag zählen neutral · Pädagogische Einschätzung der Lehrkraft entscheidet.
+                  Notenvorschlag ab {MIN_LESSONS} Stunden und {MIN_RATED} bewerteten Tagen · Stunden ohne Eintrag zählen neutral · Pädagogische Einschätzung der Lehrkraft entscheidet.
                 </div>
               </div>
               )}
@@ -3407,7 +3412,7 @@ function App() {
         Alle anderen Fächer → Allg. Grootmoor-Bogen (8 Kriterien, 3/2/3)<br/>
         Vokabeltests, HA-Quote, Material-Quote: eigene Korrektur auf den Notenvorschlag (max. ±1 Notenstufe)<br/><br/>
         <strong style={{ color:C.text }}>Notenvorschlag:</strong><br/>
-        Ab {MIN_LESSONS} anwesenden Stunden pro Schüler. Jeder Eintrag zählt<br/>
+        Ab {MIN_LESSONS} anwesenden Stunden und {MIN_RATED} bewerteten Tagen pro Schüler. Jeder Eintrag zählt<br/>
         (höchstens {MAX_PER_LESSON} pro Stunde), eine Stunde ohne Eintrag zählt wie ein neutraler.<br/>
         Doppelstunden zählen doppelt (laut Stundenplan des Kurses).<br/>
         Pädagogische Einschätzung der Lehrkraft entscheidet.<br/><br/>

@@ -218,13 +218,13 @@ diesem Bereich* zählt neutral (0,5). Dieselben Schwellen (80/65/50/40%), nur oh
 die unterste 25%-Trennung, weil der Bogen 5 statt 6 Stufen hat. Neutral landet
 damit in „weitgehend", der Mitte.
 
-**Ein Kreuz gibt es erst ab 6 anwesenden Stunden UND 4 echten Beobachtungen in
+**Ein Kreuz gibt es erst ab 3 anwesenden Stunden UND 4 echten Beobachtungen in
 diesem Bereich** — sonst stünde auf dem Bogen ein Kreuz, das nur aus neutralen
 Stunden besteht, also aus nichts, was tatsächlich beobachtet wurde.
 
 | Voraussetzung                          | Score im Bereich | Spalte                     |
 |-----------------------------------------|------------------|----------------------------|
-| < 6 Stunden oder < 4 Beob. im Bereich   | —                | kein Kreuz                 |
+| < 3 Stunden oder < 4 Beob. im Bereich   | —                | kein Kreuz                 |
 | erfüllt                                 | ≥ 80%            | in besonderem Maße         |
 | erfüllt                                 | ≥ 65%            | umfassend                  |
 | erfüllt                                 | ≥ 50%            | weitgehend                 |
@@ -239,7 +239,19 @@ ob sie zur tatsächlichen Einschätzung passen.
 
 ## Notenvorschlag-Logik
 
-Nur anzeigen ab: **6 anwesenden Stunden**
+Nur anzeigen ab: **3 anwesenden Stunden UND 2 bewerteten Tagen**
+
+**Stand 2026-09-24 geändert.** Vorher galt „6 anwesende Stunden". Die 6 stammte aus
+dem alten Einträge-System (dort war bei 5 Einträgen nicht jedes Notenband
+erreichbar) und passt zum Stunden-Score nicht mehr. Sie hing an der Zeit statt an
+der Datenlage: Einwöchige Kurse (History) bekamen nach 5 Stunden noch nichts,
+während in der 8a schon Schüler mit null bewerteten Tagen eine „3" hatten, die nur
+aus neutralen Stunden bestand.
+
+„Bewertet" heißt: An dem Tag wurde wirklich etwas über den Schüler festgehalten
+(mindestens eine Beobachtung, oder auf einem Fernunterricht-Tag ein HA-Status).
+Ein HA-Häkchen an einem normalen Tag zählt nicht — dort gilt es standardmäßig für
+alle. Wer nie auffällt, hat damit keinen Vorschlag statt automatisch einer „3".
 
 **Einheit ist die anwesende Stunde, nicht der Eintrag.** Beobachtungen sind
 Momentaufnahmen: Eingetragen wird, was auffällt. Eine Stunde ohne Eintrag heißt
@@ -265,7 +277,7 @@ einzutragen kostete nichts. An Schwellen zu drehen hilft dagegen nicht.
 zählen bis zu 6 Einträge statt 3. Maßgeblich ist der Stundenplan des Kurses
 (`slots` mit `type: "double"`, Wochentag des Datums). Ein Tag ohne passenden
 Termin, z.B. eine nachgetragene Vertretung an einem anderen Wochentag, zählt
-einfach. Für die 6-Stunden-Mindestmenge zählen Tage, nicht Einheiten — sonst
+einfach. Für die Mindestmenge von 3 Stunden zählen Tage, nicht Einheiten — sonst
 hätte ein reiner Doppelstunden-Kurs schon nach 3 Terminen einen Vorschlag.
 
 Rechnung: (Summe der gewichteten Einträge + 0,5 × Einheiten der Stunden ohne

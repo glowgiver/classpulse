@@ -136,7 +136,8 @@ SHEET_BULLETS = {
 #    Eintrag zählt wie ein neutraler Eintrag (0,5). Ohne die neutralen Stunden
 #    landete fast jeder bei 100 % "+", weil Beobachtungen Momentaufnahmen sind
 #    und nichts einzutragen nichts kostete. ──────────────────────────────────
-MIN_LESSONS    = 6
+MIN_LESSONS    = 3
+MIN_RATED      = 2
 NEUTRAL_SCORE  = 0.5
 MAX_PER_LESSON = 3
 
@@ -145,6 +146,10 @@ def lessons_present(st):
     ein Tag; ihr doppeltes Gewicht steckt in den units, nicht in dieser Zahl."""
     # "abs" = abgelaufene unentschuldigte Fehlstunde: zählt fürs Gewicht, nicht als anwesend.
     return sum(1 for l in st["rated_lessons"] if "abs" not in l) + len(st["unrated_lessons"])
+
+def rated_days(st):
+    """Tage, an denen wirklich etwas über den Schüler festgehalten wurde."""
+    return sum(1 for l in st["rated_lessons"] if "abs" not in l)
 
 def lesson_score(st, crit_ids=None):
     """Score über alle anwesenden Stunden; crit_ids schränkt auf einen Bereich ein
@@ -262,9 +267,9 @@ def hw_delta(quote):
 def material_delta(quote):
     return 1 if (quote is not None and quote < 0.85) else 0
 
-def grade_proposal(lessons, ratio, notenformat, test_avg=None, hw_quote=None, mat_quote=None):
-    """None, wenn die Mindestmenge (6 anwesende Stunden) noch nicht erreicht ist."""
-    if lessons < MIN_LESSONS or ratio is None:
+def grade_proposal(lessons, rated, ratio, notenformat, test_avg=None, hw_quote=None, mat_quote=None):
+    """None, wenn die Mindestmenge (3 anwesende Stunden und 2 bewertete Tage) noch nicht erreicht ist."""
+    if lessons < MIN_LESSONS or rated < MIN_RATED or ratio is None:
         return None
     bands = GRADE_BANDS_PUNKTE if notenformat == "punkte" else GRADE_BANDS_NOTEN
     base_idx = base_band_index(ratio)
@@ -400,7 +405,7 @@ def build_overview(styles, criteria):
 
     for st in STUDENTS:
         obs = obs_totals(st)
-        proposal = grade_proposal(lessons_present(st), lesson_score(st), NOTENFORMAT,
+        proposal = grade_proposal(lessons_present(st), rated_days(st), lesson_score(st), NOTENFORMAT,
                                    st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
         if proposal:
             gesamt = f"{score_label(NOTENFORMAT)} {proposal['grade']}"
@@ -508,7 +513,7 @@ def build_official_sheet(st, criteria, styles):
             styles["table_dim"]))
         story.append(Spacer(1, 2*mm))
 
-    proposal = grade_proposal(lessons_present(st), lesson_score(st), NOTENFORMAT,
+    proposal = grade_proposal(lessons_present(st), rated_days(st), lesson_score(st), NOTENFORMAT,
                                st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
     # override_grade: das PÄDAGOGISCH entschiedene Ergebnis, nachdem die
     # Lehrkraft die rechnerischen Vorschläge (siehe preview_grades()) gesehen
@@ -612,7 +617,7 @@ def preview_grades(students, notenformat, criteria_type_label=""):
     print(f"\n── Vorschau {criteria_type_label} ──".rstrip())
     for st in students:
         score = lesson_score(st)
-        proposal = grade_proposal(lessons_present(st), score, notenformat,
+        proposal = grade_proposal(lessons_present(st), rated_days(st), score, notenformat,
                                    st.get("test_avg"), st.get("hw_quote"), st.get("material_quote"))
         if proposal:
             rechnerisch = f"{score_label(notenformat)} {proposal['grade']} ({proposal['label']})"
