@@ -563,6 +563,7 @@ function App() {
   const [newTestOpen,    setNewTestOpen]    = useState(false);
   const [newTestTitle,   setNewTestTitle]   = useState("");
   const [newTestDate,    setNewTestDate]    = useState("");
+  const [newTestType,    setNewTestType]    = useState("test");
   const [showBackup,    setShowBackup]    = useState(false);
   const [backupImportOK,setBackupImportOK]= useState(false);
   const [backupError,   setBackupError]  = useState("");
@@ -804,11 +805,12 @@ function App() {
     setNewTestOpen(false);
     setNewTestTitle("");
     setNewTestDate(dateKey());
+    setNewTestType("test");
   };
 
   const createTest = () => {
     const id = `${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-    const t = { id, course: testsCourse, date: newTestDate || dateKey(), title: newTestTitle.trim() || "Test", grades: {} };
+    const t = { id, course: testsCourse, date: newTestDate || dateKey(), title: newTestTitle.trim() || (newTestType === "klassenarbeit" ? "Klassenarbeit" : "Test"), grades: {}, absent: {}, type: newTestType };
     setTests(prev => [...prev, t]);
     setNewTestOpen(false);
     setNewTestTitle("");
@@ -819,9 +821,27 @@ function App() {
     setTests(prev => prev.map(t => {
       if (t.id !== testId) return t;
       const grades = { ...t.grades };
-      if (value === null || Number.isNaN(value)) delete grades[studentId]; else grades[studentId] = value;
-      return { ...t, grades };
+      const absent = { ...(t.absent || {}) };
+      if (value === null || Number.isNaN(value)) delete grades[studentId];
+      else { grades[studentId] = value; delete absent[studentId]; }
+      return { ...t, grades, absent };
     }));
+  };
+
+  // Klassenarbeit: wer fehlte, und ob entschuldigt. Steht nur im Test — es
+  // entsteht keine Fehlstunde und keine Bewertung für die Mitarbeit.
+  const setTestAbsent = (testId, studentId, status) => {
+    setTests(prev => prev.map(t => {
+      if (t.id !== testId) return t;
+      const grades = { ...t.grades };
+      const absent = { ...(t.absent || {}) };
+      if (status) { absent[studentId] = status; delete grades[studentId]; } else delete absent[studentId];
+      return { ...t, grades, absent };
+    }));
+  };
+
+  const setTestType = (testId, type) => {
+    setTests(prev => prev.map(t => (t.id === testId ? { ...t, type } : t)));
   };
 
   const deleteTest = (testId) => {
@@ -1390,13 +1410,13 @@ function App() {
         const neg = obs.filter(o => o.criterionId === crit.id && o.rating === "-").length;
         return (pos === 0 && neg === 0) ? "-" : `+${pos}/-${neg}`;
       });
-      const hwQ  = getQuote(homework,  course.name, st.id, s => s==="done" ? 1 : s==="half" ? 0.5 : 0);
+      const hwQ  = getQuote(homework,  course.name, st.id, s => s==="done" ? 1 : s==="half" ? 0.5 : 0, isHwExcluded);
       const matQ = getQuote(materials, course.name, st.id, s => s==="here" ? 1 : 0, isMaterialExcused);
       const hwPct  = hwQ.count  > 0 ? `${Math.round(hwQ.quote*100)}%`  : "-";
       const matPct = matQ.count > 0 ? `${Math.round(matQ.quote*100)}%` : "-";
       let excusedMatCount = 0;
       Object.entries(materials).forEach(([key, record]) => {
-        if (!key.endsWith(`_${course.name}`) || record[st.id] !== "missing" || remoteDays[key]) return;
+        if (!key.endsWith(`_${course.name}`) || record[st.id] !== "missing" || remoteDays[key] || isExamDay(key)) return;
         if ((excusedMaterial[key] || []).includes(st.id)) excusedMatCount++;
       });
       const testAvg = getTestAverage(course.name, st.id);
@@ -1619,11 +1639,16 @@ function App() {
   // Fernunterricht-Tage zählen nicht für die Material-Quote: dort wird nur
   // stichprobenartig geschaut, und ältere Einträge tragen für alle den
   // Standardwert "hier".
-  const isMaterialExcused = (key, studentId) => !!remoteDays[key] || (excusedMaterial[key] || []).includes(studentId);
+  // Klassenarbeits-Tag: gilt nicht für Mitarbeit, HA-Quote, Material-Quote und
+  // Fehlstunden — selbst wenn an dem Tag zusätzlich eine normale Stunde erfasst wurde.
+  const isExamDay = (key) => tests.some(t => t.type === "klassenarbeit" && `${t.date}_${t.course}` === key);
+  const isHwExcluded = (key) => isExamDay(key);
+  const isMaterialExcused = (key, studentId) => !!remoteDays[key] || isExamDay(key) || (excusedMaterial[key] || []).includes(studentId);
 
   const getTestAverage = (courseName, studentId) => {
+    // Klassenarbeiten zählen nicht für die Mitarbeit — sie sind eine eigene Note.
     const grades = tests
-      .filter(t => t.course === courseName)
+      .filter(t => t.course === courseName && t.type !== "klassenarbeit")
       .map(t => t.grades?.[studentId])
       .filter(g => typeof g === "number");
     if (grades.length < TEST_MIN_COUNT) return null;
@@ -1647,7 +1672,7 @@ function App() {
   };
 
   const getHwEffect = (courseName, studentId) => {
-    const q = getQuote(homework, courseName, studentId, s => s==="done" ? 1 : s==="half" ? 0.5 : 0);
+    const q = getQuote(homework, courseName, studentId, s => s==="done" ? 1 : s==="half" ? 0.5 : 0, isHwExcluded);
     if (q.count < HW_MIN_COUNT) return { delta:0, status:"noch keine Daten" };
     return { delta: q.quote < HW_THRESHOLD ? +1 : 0, status:`${Math.round(q.quote*100)}%` };
   };
@@ -1691,7 +1716,7 @@ function App() {
   const ABSENCE_WARN_DAYS     = 10;
   const daysSince = (date) => Math.floor((new Date(`${dateKey()}T12:00:00`) - new Date(`${date}T12:00:00`)) / 86400000);
   const isAbsenceExpired = (key, studentId) =>
-    absenceRule && !remoteDays[key] && !(excusedAbsences[key] || []).includes(studentId)
+    absenceRule && !remoteDays[key] && !isExamDay(key) && !(excusedAbsences[key] || []).includes(studentId)
     && daysSince(key.slice(0, key.indexOf("_"))) > ABSENCE_DEADLINE_DAYS;
 
   const getLessonStats = (courseName, studentId) => {
@@ -1704,6 +1729,7 @@ function App() {
     let lessons = 0, rated = 0, sum = 0, weight = 0;
     (lessonDatesByCourse.get(courseName) || new Set()).forEach(date => {
       const key = `${date}_${courseName}`;
+      if (isExamDay(key)) return;
       if ((absences[key] || []).includes(studentId)) {
         // Abgelaufen unentschuldigt: die Stunde zählt mit dem Wert eines "−"
         // (Doppelstunde doppelt). Sie zählt aber weder als anwesende noch als
@@ -3133,6 +3159,7 @@ function App() {
         hwNextText: homeworkAssigned[k] || "",
         obsCount: observations.filter(o => o.date === date && o.course === course && isRating(o)).length,
         remote: !!remoteDays[k],
+        exam: isExamDay(k),
       };
     })
     .filter(r => logbookAll || r.date >= cutoff)
@@ -3212,6 +3239,12 @@ function App() {
                       <span style={{ marginLeft:6, fontSize:11, fontWeight:600, color:C.amber,
                                      background:C.amberSoft, borderRadius:6, padding:"2px 6px" }}>
                         Fernunterricht
+                      </span>
+                    )}
+                    {r.exam && (
+                      <span style={{ marginLeft:6, fontSize:11, fontWeight:600, color:C.amber,
+                                     background:C.amberSoft, borderRadius:6, padding:"2px 6px" }}>
+                        Klassenarbeit · zählt nicht
                       </span>
                     )}
                   </span>
@@ -3879,6 +3912,7 @@ function App() {
     const courseTests = tests.filter(t => t.course === testsCourse).slice().sort((a,b) => b.date.localeCompare(a.date));
     const openTest = testsOpenId ? courseTests.find(t => t.id === testsOpenId) : null;
     const punkte = getNotenformat(testsCourse) === "punkte";
+    const isKA = openTest?.type === "klassenarbeit";
 
     // Schritt 3: Noten für einen einzelnen Test.
     if (openTest) {
@@ -3888,12 +3922,39 @@ function App() {
             <button style={{ background:"none", border:"none", color:C.textDim, cursor:"pointer", fontSize:13, padding:0, marginBottom:8 }}
               onClick={() => setTestsOpenId(null)}>← Andere Tests</button>
             <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>{openTest.title}</h3>
-            <p style={{ fontSize:15, color:C.textDim, marginBottom:14 }}>
+            <p style={{ fontSize:15, color:C.textDim, marginBottom:10 }}>
               {testsCourse} · {fmtLogDate(openTest.date)} · {punkte ? "0–15 Punkte" : "Note als Dezimalzahl, z.B. 2.3 für 2−"}
             </p>
-            {course.students.map(st => (
-              <div key={st.id} style={S.row}>
+            <div style={{ display:"flex", gap:6, marginBottom:6 }}>
+              <button style={{ ...S.btnSm(!isKA ? "green" : "ghost"), flex:1, padding:"9px 6px", fontSize:13 }}
+                onClick={() => setTestType(openTest.id, "test")}>Test (zählt für Mitarbeit)</button>
+              <button style={{ ...S.btnSm(isKA ? "amber" : "ghost"), flex:1, padding:"9px 6px", fontSize:13 }}
+                onClick={() => setTestType(openTest.id, "klassenarbeit")}>Klassenarbeit</button>
+            </div>
+            {isKA && (
+              <p style={{ fontSize:12, color:C.textDim, marginBottom:10, lineHeight:"1.4" }}>
+                Zählt nicht für die Mitarbeit. Wer fehlt, wird hier vermerkt, es entsteht keine Fehlstunde.
+              </p>
+            )}
+            {course.students.map(st => {
+              const absentStatus = (openTest.absent || {})[st.id];
+              return (
+              <div key={st.id} style={{ ...S.row, flexWrap:"wrap", gap:6, background: absentStatus ? C.redSoft : undefined }}>
                 <span style={{ fontSize:15, fontWeight:500 }}>{st.name}</span>
+                {isKA && (
+                  <span style={{ display:"flex", gap:4, marginLeft:"auto", marginRight:6 }}>
+                    <button style={{ ...S.btnSm(absentStatus ? "red" : "ghost"), padding:"8px 10px", fontSize:12 }}
+                      onClick={() => setTestAbsent(openTest.id, st.id, absentStatus ? null : "unexcused")}>
+                      {absentStatus ? "fehlt" : "fehlt?"}
+                    </button>
+                    {absentStatus && (
+                      <button style={{ ...S.btnSm(absentStatus === "excused" ? "green" : "ghost"), padding:"8px 10px", fontSize:12 }}
+                        onClick={() => setTestAbsent(openTest.id, st.id, absentStatus === "excused" ? "unexcused" : "excused")}>
+                        {absentStatus === "excused" ? "✓ entschuldigt" : "entschuldigt?"}
+                      </button>
+                    )}
+                  </span>
+                )}
                 <input type="number" inputMode="decimal"
                   step={punkte ? 1 : 0.1} min={punkte ? 0 : 1} max={punkte ? 15 : 6}
                   value={openTest.grades[st.id] ?? ""}
@@ -3905,7 +3966,8 @@ function App() {
                   style={{ width:64, padding:"10px 8px", background:C.surface, border:`1px solid ${C.border}`,
                            borderRadius:8, color:C.text, fontSize:15, outline:"none", textAlign:"center" }} />
               </div>
-            ))}
+              );
+            })}
             <button style={{ ...S.btn("ghost"), borderColor:C.red, color:C.red, marginTop:8 }}
               onClick={() => deleteTest(openTest.id)}>Test löschen</button>
             <p style={{ fontSize:13, color:C.textMuted, textAlign:"center", marginTop:6 }}>Wird automatisch gespeichert.</p>
@@ -3922,7 +3984,7 @@ function App() {
             onClick={() => setTestsCourse(null)}>← Anderer Kurs</button>
           <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>{testsCourse}</h3>
           <p style={{ fontSize:15, color:C.textDim, marginBottom:14 }}>
-            Zählt nicht als Kriterium — eigene, gedeckelte Korrektur auf den Notenvorschlag ab {TEST_MIN_COUNT} Tests.
+            Tests: eigene, gedeckelte Korrektur auf den Notenvorschlag ab {TEST_MIN_COUNT} Tests. Klassenarbeiten zählen nicht mit.
           </p>
 
           {!newTestOpen ? (
@@ -3934,6 +3996,12 @@ function App() {
                 onChange={e => setNewTestDate(e.target.value)}
                 style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
                          borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:8, boxSizing:"border-box" }} />
+              <div style={{ display:"flex", gap:6, marginBottom:8 }}>
+                <button style={{ ...S.btnSm(newTestType === "test" ? "green" : "ghost"), flex:1, padding:"9px 6px", fontSize:13 }}
+                  onClick={() => setNewTestType("test")}>Test (zählt für Mitarbeit)</button>
+                <button style={{ ...S.btnSm(newTestType === "klassenarbeit" ? "amber" : "ghost"), flex:1, padding:"9px 6px", fontSize:13 }}
+                  onClick={() => setNewTestType("klassenarbeit")}>Klassenarbeit</button>
+              </div>
               <input value={newTestTitle} onChange={e => setNewTestTitle(e.target.value)}
                 placeholder="Titel (z.B. Vokabeltest Unit 3)" {...inputFocus}
                 style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
@@ -3949,14 +4017,20 @@ function App() {
               <div style={S.sectionLbl}>Bisherige Tests</div>
               {courseTests.map(t => {
                 const gradeCount = Object.keys(t.grades).length;
+                const absentCount = Object.keys(t.absent || {}).length;
                 return (
                   <button key={t.id} style={{ ...S.row, width:"100%", textAlign:"left", cursor:"pointer", WebkitAppearance:"none" }}
                     onClick={() => setTestsOpenId(t.id)}>
                     <span>
                       <span style={{ fontSize:15, fontWeight:600, color:C.text, display:"block" }}>{t.title}</span>
-                      <span style={{ fontSize:13, color:C.textDim }}>{fmtLogDate(t.date)}</span>
+                      <span style={{ fontSize:13, color:C.textDim }}>
+                        {fmtLogDate(t.date)}
+                        {t.type === "klassenarbeit" && <span style={{ color:C.amber, fontWeight:600 }}> · Klassenarbeit, zählt nicht</span>}
+                      </span>
                     </span>
-                    <span style={{ fontSize:13, color:C.textDim }}>{gradeCount}/{course.students.length}</span>
+                    <span style={{ fontSize:13, color:C.textDim }}>
+                      {gradeCount}/{course.students.length}{absentCount > 0 ? ` · ${absentCount} fehlt` : ""}
+                    </span>
                   </button>
                 );
               })}

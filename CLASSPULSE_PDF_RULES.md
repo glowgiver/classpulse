@@ -337,7 +337,7 @@ waren es 21 / 13 / 1 / 0 / 0 / 0. Dass sich so viele bei „3" sammeln, liegt an
 wenigen Stunden bisher. Nach ein paar Wochen mehr Daten die Schwellen noch einmal
 gegenprüfen.
 
-**Korrektur** — Vokabeltests, HA-Quote, Material-Quote verschieben das Basis-Band
+**Korrektur** — Vokabeltests (`tests` mit `type` ≠ `klassenarbeit`), HA-Quote, Material-Quote verschieben das Basis-Band
 danach um maximal ±1 Zeile insgesamt (Effekte werden addiert, dann gedeckelt —
 ein gutes Ergebnis in einer Spur kann ein schlechtes in einer anderen ausgleichen):
 
@@ -347,6 +347,12 @@ ein gutes Ergebnis in einer Spur kann ein schlechtes in einer anderen ausgleiche
 | Tests            | ab 2 Tests: Ø ≥4,0 (bzw. ≤5 Punkte)                  | +1 Zeile runter|
 | HA-Quote         | ab 6 Kontrollen: < 80%                                | +1 Zeile runter|
 | Material-Quote   | ab 8 Kontrollen: < 85%                                | +1 Zeile runter|
+
+**Klassenarbeiten** stehen ebenfalls in `tests`, mit `type: "klassenarbeit"`. Sie
+zählen **nicht** für den Notenvorschlag: weder in `test_avg` noch als Stunde oder
+Fehlstunde. Wer bei einer Klassenarbeit fehlte, steht in `absent` des Tests
+(`excused`/`unexcused`) und nur dort. Beim `test_avg` also nur Tests ohne
+`type: "klassenarbeit"` mitteln. Ältere Tests ohne `type` sind normale Tests.
 
 Ein „Material fehlte"-Eintrag lässt sich nachträglich entschuldigen (Klassenbuch →
 Tag antippen → „Mat. entschuldigen?"), z.B. wenn Tage später eine plausible
