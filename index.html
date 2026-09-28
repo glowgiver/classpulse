@@ -840,6 +840,10 @@ function App() {
     }));
   };
 
+  const setTestField = (testId, field, value) => {
+    setTests(prev => prev.map(t => (t.id === testId ? { ...t, [field]: value } : t)));
+  };
+
   const setTestType = (testId, type) => {
     setTests(prev => prev.map(t => (t.id === testId ? { ...t, type } : t)));
   };
@@ -1808,6 +1812,37 @@ function App() {
             </span>
           </button>
         )}
+
+        {/* Tests/Klassenarbeiten ohne Noten: kommende Termine und solche, bei denen die
+            Noten noch fehlen. Antippen öffnet den Test direkt zum Eintragen. */}
+        {(() => {
+          const todayK = dateKey();
+          const cutoff = dateKey(new Date(Date.now() - 21 * 86400000));
+          const open = tests
+            .filter(t => Object.keys(t.grades || {}).length === 0 && Object.keys(t.absent || {}).length === 0 && t.date >= cutoff)
+            .sort((a, b) => a.date.localeCompare(b.date))
+            .slice(0, 4);
+          if (!open.length) return null;
+          return (
+            <div style={{ marginBottom:14 }}>
+              <div style={S.sectionLbl}>Klassenarbeiten & Tests offen</div>
+              {open.map(t => (
+                <button key={t.id} style={{ ...S.courseCard(false), width:"100%", textAlign:"left", WebkitAppearance:"none", marginBottom:6 }}
+                  onClick={() => { setShowTests(true); setTestsCourse(t.course); setTestsOpenId(t.id); setNewTestOpen(false); }}>
+                  <span style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
+                    <span>
+                      <span style={{ display:"block", ...S.courseTitle, color:C.text }}>{t.title} · {t.course}</span>
+                      <span style={{ display:"block", ...S.courseMeta }}>{fmtLogDate(t.date)}</span>
+                    </span>
+                    <span style={{ fontSize:12, fontWeight:700, color: t.date > todayK ? C.accent : C.amber, flexShrink:0 }}>
+                      {t.date > todayK ? "Termin" : "Noten fehlen"}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          );
+        })()}
 
         {currentSlot && (
           <button style={{ ...S.courseCard(true), marginBottom:16, width:"100%", textAlign:"left", WebkitAppearance:"none" }}
@@ -3925,6 +3960,21 @@ function App() {
             <p style={{ fontSize:15, color:C.textDim, marginBottom:10 }}>
               {testsCourse} · {fmtLogDate(openTest.date)} · {punkte ? "0–15 Punkte" : "Note als Dezimalzahl, z.B. 2.3 für 2−"}
             </p>
+            {openTest.date > dateKey() && (
+              <p style={{ fontSize:13, color:C.amber, fontWeight:600, marginBottom:8 }}>
+                Termin in der Zukunft. Die Noten trägst du nach der Arbeit hier ein: Mehr → Tests → {testsCourse} → diesen Eintrag antippen.
+              </p>
+            )}
+            <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+              <input value={openTest.title} onChange={e => setTestField(openTest.id, "title", e.target.value)}
+                aria-label="Titel" {...inputFocus}
+                style={{ flex:1, minWidth:0, padding:"9px 10px", background:C.surface, border:`1px solid ${C.border}`,
+                         borderRadius:8, color:C.text, fontSize:14, outline:"none", boxSizing:"border-box" }} />
+              <input type="date" value={openTest.date} aria-label="Datum"
+                onChange={e => e.target.value && setTestField(openTest.id, "date", e.target.value)}
+                style={{ width:150, padding:"9px 8px", background:C.surface, border:`1px solid ${C.border}`,
+                         borderRadius:8, color:C.text, fontSize:14, outline:"none", boxSizing:"border-box" }} />
+            </div>
             <div style={{ display:"flex", gap:6, marginBottom:6 }}>
               <button style={{ ...S.btnSm(!isKA ? "green" : "ghost"), flex:1, padding:"9px 6px", fontSize:13 }}
                 onClick={() => setTestType(openTest.id, "test")}>Test (zählt für Mitarbeit)</button>
@@ -3992,7 +4042,7 @@ function App() {
               onClick={() => { setNewTestOpen(true); setNewTestDate(dateKey()); }}>+ Neuer Test</button>
           ) : (
             <div style={{ ...S.critCard, marginBottom:10 }}>
-              <input type="date" value={newTestDate} max={dateKey()}
+              <input type="date" value={newTestDate}
                 onChange={e => setNewTestDate(e.target.value)}
                 style={{ width:"100%", padding:"12px 11px", background:C.surface, border:`1px solid ${C.border}`,
                          borderRadius:8, color:C.text, fontSize:15, outline:"none", marginBottom:8, boxSizing:"border-box" }} />
@@ -4026,6 +4076,7 @@ function App() {
                       <span style={{ fontSize:13, color:C.textDim }}>
                         {fmtLogDate(t.date)}
                         {t.type === "klassenarbeit" && <span style={{ color:C.amber, fontWeight:600 }}> · Klassenarbeit, zählt nicht</span>}
+                        {t.date > dateKey() && <span style={{ color:C.accent, fontWeight:600 }}> · Termin</span>}
                       </span>
                     </span>
                     <span style={{ fontSize:13, color:C.textDim }}>
