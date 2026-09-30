@@ -512,6 +512,7 @@ function App() {
   const [courseForm,        setCourseForm]        = useState(null);
   const [confirmDeleteCourse, setConfirmDeleteCourse] = useState(false);
   const [openStats,    setOpenStats]     = useState(null);
+  const [absenceListOpen, setAbsenceListOpen] = useState(false);
   const [nameFilter,   setNameFilter]    = useState("");   // Beobachten-Liste
   const [hwFilter,     setHwFilter]      = useState("");   // Hausaufgaben-Phase
   // Notenvorschläge stehen in der Übersicht neben Klarnamen, untereinander,
@@ -3401,8 +3402,8 @@ function App() {
         <Icon name="settings" size={16} color={C.textDim} /> Kurse verwalten (anlegen, umbenennen, Stundenplan)
       </button>
 
-      {/* Fristen für Entschuldigungen: hier siehst du, was bald abläuft, bevor die
-          Regel es als "−" in den Notenvorschlag rechnet. */}
+      {/* Fristen für Entschuldigungen: nur der Zeitraum, in dem noch etwas zu klären
+          ist (Bringschuld der Schüler), damit die Liste nicht endlos wächst. */}
       <div style={S.sectionLbl}>Unentschuldigte Fehlstunden</div>
       {(() => {
         const rows = [];
@@ -3414,37 +3415,52 @@ function App() {
           const open = ids.filter(id => !(excusedAbsences[key] || []).includes(id) && c?.students.some(s => s.id === id));
           if (!open.length) return;
           const age = daysSince(date);
-          if (age < ABSENCE_WARN_DAYS) return;
-          rows.push({ key, date, courseName, names: open.map(id => c.students.find(s => s.id === id).name), age, expired: age > ABSENCE_DEADLINE_DAYS });
+          if (age < ABSENCE_WARN_DAYS || age > ABSENCE_DEADLINE_DAYS) return;
+          rows.push({ key, date, courseName, names: open.map(id => c.students.find(s => s.id === id).name), age });
         });
         rows.sort((a, b) => b.age - a.age);
         return (
-          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px" }}>
-            <div style={{ fontSize:13, color:C.textDim, lineHeight:"1.5", marginBottom:10 }}>
-              Wer {ABSENCE_DEADLINE_DAYS} Tage nach dem Fehltag nicht entschuldigt ist, hat die Stunde
-              unentschuldigt versäumt. Ist die Regel an, zählt sie im Notenvorschlag wie ein „−“
-              (Doppelstunde doppelt). Erst die Liste durchsehen, dann einschalten.
-            </div>
-            <button style={{ ...S.btnSm(absenceRule ? "amber" : "ghost"), width:"100%", marginBottom: rows.length ? 10 : 0 }}
-              onClick={() => setAbsenceRule(v => !v)}>
-              {absenceRule ? "✓ Regel ist an — abgelaufene Fehlstunden zählen als „−“" : "Regel ist aus — antippen zum Einschalten"}
+          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:0, overflow:"hidden" }}>
+            <button aria-expanded={absenceListOpen} onClick={() => setAbsenceListOpen(v => !v)}
+              style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%",
+                       textAlign:"left", background:"none", border:"none", padding:"12px 14px",
+                       cursor:"pointer", WebkitAppearance:"none", gap:8 }}>
+              <span style={{ fontSize:14, color:C.text }}>
+                {absenceRule ? "Regel an" : "Regel aus"}
+                {rows.length > 0 && <span style={{ color:C.amber, fontWeight:600 }}> · {rows.length} noch zu klären</span>}
+              </span>
+              <span style={{ fontSize:13, color:C.textDim, flexShrink:0 }}>{absenceListOpen ? "▾" : "▸"}</span>
             </button>
-            {rows.length === 0 && (
-              <div style={{ fontSize:13, color:C.textMuted, marginTop:10 }}>Nichts, was bald abläuft oder abgelaufen ist.</div>
-            )}
-            {rows.map(r => (
-              <button key={r.key} onClick={() => { openBackfill(r.courseName, r.date); setShowBackfill(true); }}
-                style={{ display:"block", width:"100%", textAlign:"left", background:"none", border:"none",
-                         borderTop:`1px solid ${C.border}`, padding:"9px 0", cursor:"pointer", WebkitAppearance:"none" }}>
-                <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}>
-                  <span style={{ fontSize:14, fontWeight:600, color:C.text }}>{fmtLogDate(r.date)} · {r.courseName}</span>
-                  <span style={{ fontSize:12, fontWeight:600, color: r.expired ? C.red : C.amber, flexShrink:0 }}>
-                    {r.expired ? `abgelaufen (${r.age} Tage)` : `noch ${ABSENCE_DEADLINE_DAYS - r.age + 1} Tage`}
-                  </span>
+            {absenceListOpen && (
+              <div style={{ padding:"0 14px 12px" }}>
+                <div style={{ fontSize:13, color:C.textDim, lineHeight:"1.5", marginBottom:10 }}>
+                  Wer {ABSENCE_DEADLINE_DAYS} Tage nach dem Fehltag nicht entschuldigt ist, hat die Stunde
+                  unentschuldigt versäumt. Ist die Regel an, zählt sie im Notenvorschlag wie ein „−“
+                  (Doppelstunde doppelt). Hier siehst du nur, was noch in den {ABSENCE_DEADLINE_DAYS} Tagen
+                  offen ist — Zeit, die Schüler zu fragen, bevor es zählt.
                 </div>
-                <div style={{ fontSize:13, color:C.textDim }}>{r.names.join(", ")}</div>
-              </button>
-            ))}
+                <button style={{ ...S.btnSm(absenceRule ? "amber" : "ghost"), width:"100%", marginBottom: rows.length ? 10 : 0 }}
+                  onClick={() => setAbsenceRule(v => !v)}>
+                  {absenceRule ? "✓ Regel ist an — abgelaufene Fehlstunden zählen als „−“" : "Regel ist aus — antippen zum Einschalten"}
+                </button>
+                {rows.length === 0 && (
+                  <div style={{ fontSize:13, color:C.textMuted, marginTop:10 }}>Gerade nichts offen, das bald abläuft.</div>
+                )}
+                {rows.map(r => (
+                  <button key={r.key} onClick={() => { openBackfill(r.courseName, r.date); setShowBackfill(true); }}
+                    style={{ display:"block", width:"100%", textAlign:"left", background:"none", border:"none",
+                             borderTop:`1px solid ${C.border}`, padding:"9px 0", cursor:"pointer", WebkitAppearance:"none" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}>
+                      <span style={{ fontSize:14, fontWeight:600, color:C.text }}>{fmtLogDate(r.date)} · {r.courseName}</span>
+                      <span style={{ fontSize:12, fontWeight:600, color:C.amber, flexShrink:0 }}>
+                        noch {ABSENCE_DEADLINE_DAYS - r.age + 1} Tage
+                      </span>
+                    </div>
+                    <div style={{ fontSize:13, color:C.textDim }}>{r.names.join(", ")}</div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         );
       })()}
