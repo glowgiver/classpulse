@@ -1718,7 +1718,17 @@ function App() {
   // Tage seit dem Fehltag; wer 14 Tage danach noch nicht entschuldigt ist, hat
   // die Stunde unentschuldigt versäumt (Leistung nicht erbracht = eine 6).
   const ABSENCE_DEADLINE_DAYS = 14;
-  const ABSENCE_WARN_DAYS     = 10;
+  // Drittelnoten-Leiter für Testeingabe: 2+ = 1.7, 2− = 2.3 (gespeichert als Zahl).
+const DRITTEL_NOTEN = (() => {
+  const out = [];
+  for (let n = 1; n <= 6; n++) {
+    if (n > 1 && n < 6) out.push({ v: +(n - 0.3).toFixed(1), label: `${n}+` });
+    out.push({ v: n, label: `${n}` });
+    if (n <= 5) out.push({ v: +(n + 0.3).toFixed(1), label: `${n}−` });
+  }
+  return out;
+})();
+const ABSENCE_WARN_DAYS     = 10;
   const daysSince = (date) => Math.floor((new Date(`${dateKey()}T12:00:00`) - new Date(`${date}T12:00:00`)) / 86400000);
   const isAbsenceExpired = (key, studentId) =>
     absenceRule && !remoteDays[key] && !isExamDay(key) && !(excusedAbsences[key] || []).includes(studentId)
@@ -3974,7 +3984,7 @@ function App() {
               onClick={() => setTestsOpenId(null)}>← Andere Tests</button>
             <h3 style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>{openTest.title}</h3>
             <p style={{ fontSize:15, color:C.textDim, marginBottom:10 }}>
-              {testsCourse} · {fmtLogDate(openTest.date)} · {punkte ? "0–15 Punkte" : "Note als Dezimalzahl, z.B. 2.3 für 2−"}
+              {testsCourse} · {fmtLogDate(openTest.date)} · {punkte ? "0–15 Punkte" : "Note in Drittelschritten (2+, 2, 2−)"}
             </p>
             {openTest.date > dateKey() && (
               <p style={{ fontSize:13, color:C.amber, fontWeight:600, marginBottom:8 }}>
@@ -4021,8 +4031,9 @@ function App() {
                     )}
                   </span>
                 )}
+                {punkte ? (
                 <input type="number" inputMode="decimal"
-                  step={punkte ? 1 : 0.1} min={punkte ? 0 : 1} max={punkte ? 15 : 6}
+                  step={1} min={0} max={15}
                   value={openTest.grades[st.id] ?? ""}
                   onChange={e => {
                     const raw = e.target.value;
@@ -4031,6 +4042,23 @@ function App() {
                   placeholder="—"
                   style={{ width:64, padding:"10px 8px", background:C.surface, border:`1px solid ${C.border}`,
                            borderRadius:8, color:C.text, fontSize:15, outline:"none", textAlign:"center" }} />
+                ) : (
+                <select aria-label={`Note ${st.name}`}
+                  value={openTest.grades[st.id] ?? ""}
+                  onChange={e => {
+                    const raw = e.target.value;
+                    setTestGrade(openTest.id, st.id, raw === "" ? null : parseFloat(raw));
+                  }}
+                  style={{ width:84, padding:"10px 6px", background:C.surface, border:`1px solid ${C.border}`,
+                           borderRadius:8, color:C.text, fontSize:15, outline:"none", textAlign:"center" }}>
+                  <option value="">—</option>
+                  {/* Eine früher als Dezimalzahl eingegebene Note, die nicht auf der Drittel-Leiter liegt, bleibt sichtbar. */}
+                  {openTest.grades[st.id] != null && !DRITTEL_NOTEN.some(o => o.v === openTest.grades[st.id]) && (
+                    <option value={openTest.grades[st.id]}>{openTest.grades[st.id]}</option>
+                  )}
+                  {DRITTEL_NOTEN.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+                </select>
+                )}
               </div>
               );
             })}
