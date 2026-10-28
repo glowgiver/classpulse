@@ -1742,6 +1742,7 @@ const ABSENCE_WARN_DAYS     = 10;
       byDate.set(o.date, d);
     });
     let lessons = 0, rated = 0, sum = 0, weight = 0;
+    const present = [];
     (lessonDatesByCourse.get(courseName) || new Set()).forEach(date => {
       const key = `${date}_${courseName}`;
       if (isExamDay(key)) return;
@@ -1765,6 +1766,7 @@ const ABSENCE_WARN_DAYS     = 10;
       // festgehalten (Beobachtung, oder auf einem Fernunterricht-Tag ein HA-Status).
       // Ein HA-Häkchen an einem normalen Tag zählt nicht, das gilt dort für alle.
       if (d || remoteHw) rated += 1;
+      present.push({ date, rated: !!(d || remoteHw) });
       if (d) {
         const total = d.pos + d.neg;
         const w = Math.min(total, MAX_PER_LESSON * units);
@@ -1773,7 +1775,22 @@ const ABSENCE_WARN_DAYS     = 10;
         weight += units; sum += NEUTRAL_SCORE * units;
       }
     });
-    return { lessons, rated, score: weight ? sum / weight : null };
+    // Stunden seit dem letzten Eintrag: für die Anzeige "seit N Std. ohne Eintrag".
+    const lastRated = present.reduce((m, x) => x.rated && x.date > m ? x.date : m, "");
+    const sinceLast = present.filter(x => x.date > lastRated).length;
+    return { lessons, rated, sinceLast, score: weight ? sum / weight : null };
+  };
+
+  // Wie belastbar ist ein Vorschlag? Anteil der anwesenden Stunden, in denen etwas
+  // über den Schüler festgehalten wurde. Leise Schüler bekommen sonst einen
+  // Vorschlag, der genauso sicher aussieht wie der eines Vielredners — dabei
+  // stammt er überwiegend aus den neutralen Stunden ohne Eintrag.
+  const getReliability = (courseName, studentId) => {
+    const { lessons, rated } = getLessonStats(courseName, studentId);
+    const share = lessons ? rated / lessons : 0;
+    if (share >= 0.6)  return { key:"sicher",    label:"belastbar",  share, lessons, rated, color:C.green };
+    if (share >= 0.35) return { key:"duenn",     label:"dünn",       share, lessons, rated, color:C.amber };
+    return                    { key:"sehrduenn", label:"sehr dünn",  share, lessons, rated, color:C.red   };
   };
 
   const getGradeProposal = (courseName, studentId) => {
@@ -2351,6 +2368,16 @@ const ABSENCE_WARN_DAYS     = 10;
                   </span>
                   <span style={{ fontSize:13, color:C.textDim }}>{grade.label}</span>
                 </div>
+                {(() => {
+                  const r = getReliability(activeCourse, activeStudent);
+                  if (r.key === "sicher") return null;
+                  return (
+                    <div style={{ fontSize:13, color:r.color, marginBottom:8 }}>
+                      ⚠ Datenlage {r.label}: nur {r.rated} von {r.lessons} Stunden mit Eintrag
+                      {r.key === "sehrduenn" ? " — der Vorschlag kann um ein Band abweichen, hier entscheidest du." : "."}
+                    </div>
+                  );
+                })()}
                 {critTendencies.map(t => (
                   <div key={t.crit.id} style={{ display:"flex", justifyContent:"space-between", paddingTop:3 }}>
                     <span style={{ fontSize:13, color:C.textDim }}>{t.crit.short}</span>
@@ -2640,6 +2667,7 @@ const ABSENCE_WARN_DAYS     = 10;
           const row = (st, highlight) => {
             const stats = getStats(activeCourse, st.id);
             const t     = getToday(activeCourse, st.id);
+            const gap   = getLessonStats(activeCourse, st.id).sinceLast;
             const leadObs = lead && obsFor(activeCourse, st.id).find(o =>
               o.criterionId === lead.id && o.date === today);
             return (
@@ -2655,7 +2683,7 @@ const ABSENCE_WARN_DAYS     = 10;
                     {/* Zeichen + Wort, nie Farbe allein */}
                     {t.rated > 0   ? `✓ heute ${t.rated}×`
                      : t.skipped   ? "○ heute nichts zu bewerten"
-                     : stats.last  ? `zuletzt ${stats.last}`
+                     : stats.last  ? `zuletzt ${stats.last}${gap >= 2 ? ` · seit ${gap} Std. ohne Eintrag` : ""}`
                      :               "noch nie beobachtet"}
                     {stats.total > 0 && <>{" · "}
                       <span style={{ color:C.green }}>+{stats.pos}</span>/
@@ -3087,6 +3115,10 @@ const ABSENCE_WARN_DAYS     = 10;
                       <span style={{ fontSize:15, color:C.text, flex:1 }}>{st.name}</span>
                       <span style={{ fontSize:13, color:C.textDim, marginRight:10 }}>
                         {prog.lessons} Std. / {prog.rated} bew.
+                        {grade && (() => {
+                          const r = getReliability(course.name, st.id);
+                          return r.key === "sicher" ? null : <span style={{ color:r.color }}> · {r.label}</span>;
+                        })()}
                       </span>
                       {grade ? (
                         gradesVisible ? (
@@ -3107,7 +3139,7 @@ const ABSENCE_WARN_DAYS     = 10;
                   );
                 })}
                 <div style={{ fontSize:13, color:C.textMuted, marginTop:8 }}>
-                  Notenvorschlag ab {MIN_LESSONS} Stunden und {MIN_RATED} bewerteten Tagen · Stunden ohne Eintrag zählen neutral · Pädagogische Einschätzung der Lehrkraft entscheidet.
+                  Notenvorschlag ab {MIN_LESSONS} Stunden und {MIN_RATED} bewerteten Tagen · Stunden ohne Eintrag zählen neutral · „dünn“ = unter 60 %, „sehr dünn“ = unter 35 % der Stunden mit Eintrag · Pädagogische Einschätzung der Lehrkraft entscheidet.
                 </div>
               </div>
               )}
