@@ -191,11 +191,23 @@ def obs_totals(st):
 #    Notenvorschlag (80/65/50/40%), nur ohne die unterste 25%-Trennung, weil
 #    hier nur 5 statt 6 Stufen zur Verfügung stehen. Neutral (0,5) landet in
 #    "weitgehend", der Mitte.
-#    BEREICH_MIN_OBS: ein Kreuz braucht trotzdem mindestens so viele echte
-#    Einträge im Bereich — sonst stünde auf dem Bogen ein Kreuz, das nur aus
-#    neutralen Stunden besteht. 4 ist eine eigene Setzung (nicht mit Philipp
-#    einzeln abgestimmt) — bei Bedarf anpassen. ─────────────────────────────
-BEREICH_MIN_OBS = 4
+#    Das Kreuz zeigt die TENDENZ DER ECHTEN EINTRÄGE im Bereich (geglätteter Anteil
+#    Plus an allen Einträgen dort). Leere Stunden zählen hier NICHT mit: Sie gehören in den
+#    Notenvorschlag, aber ein Kreuz, das nur wegen vieler Stunden ohne Eintrag in
+#    der Mitte landet, sagt nichts über die Kompetenz (Tom Schuchardt: 8 Plus,
+#    kein Minus, trotzdem "weitgehend").
+#    BEREICH_MIN_OBS: ein Kreuz braucht mindestens so viele echte Einträge im
+#    Bereich; darunter bleibt das Feld leer. 2 ist eine eigene Setzung (nicht
+#    einzeln abgestimmt) — bei Bedarf anpassen. ──────────────────────────────
+BEREICH_MIN_OBS = 2
+
+def area_cross(pos, neg, lessons, rated):
+    """Spaltenindex 0–4 aus dem Plus-Anteil der echten Einträge, sonst None."""
+    if pos + neg < BEREICH_MIN_OBS or lessons < MIN_LESSONS or rated < MIN_RATED:
+        return None
+    # Laplace-Glättung (zwei neutrale Pseudo-Einträge): Aus 2–3 Plus allein wird
+    # kein Spitzenkreuz, aus 8 Plus ohne Minus aber sehr wohl.
+    return scale_index((pos + 1) / (pos + neg + 2), pos + neg, lessons)
 
 def scale_index(score, entry_count, lessons):
     if score is None or entry_count < BEREICH_MIN_OBS or lessons < MIN_LESSONS:
@@ -347,6 +359,7 @@ def make_styles():
         "table_header":  ParagraphStyle("th",  fontName="Montserrat-Bold",    fontSize=8,  textColor=colors.white, leading=10),
         "table_header_sm": ParagraphStyle("ths", fontName="Montserrat-Bold",  fontSize=6.7,textColor=colors.white, leading=8, alignment=1),
         "table_cell":    ParagraphStyle("tc",  fontName="Montserrat",         fontSize=8.5,textColor=BLACK, leading=12),
+        "cross_cell":    ParagraphStyle("xc",  fontName="Montserrat-Bold",    fontSize=9,  textColor=BLACK, leading=12, alignment=1),
         "table_dim":     ParagraphStyle("td",  fontName="Montserrat",         fontSize=8,  textColor=GREY_TEXT, leading=11),
         "student_name":  ParagraphStyle("sn",  fontName="Montserrat-Bold",    fontSize=14, textColor=PRUSSIAN, spaceAfter=1*mm, leading=17),
         "student_meta":  ParagraphStyle("sm",  fontName="Montserrat",         fontSize=9,  textColor=GREY_TEXT, spaceAfter=5*mm, leading=12),
@@ -479,13 +492,13 @@ def build_official_sheet(st, criteria, styles):
 
         pos, neg = section_counts(obs, criteria, bereich)
         crit_ids = {cid for cid, _, b in criteria if b == bereich}
-        idx = scale_index(lesson_score(st, crit_ids), pos + neg, lessons_present(st))
+        idx = area_cross(pos, neg, lessons_present(st), rated_days(st))
 
         col_w = [58*mm] + [23.4*mm]*5
         header_row = [Paragraph("Einschätzung der <b>Schülerin</b>/des <b>Schülers</b>", styles["table_header_sm"])] + \
                      [Paragraph(c, styles["table_header_sm"]) for c in SHEET_COLUMNS]
         rating_row = [Paragraph(SHEET_ROW_LABEL, styles["sheet_row"])] + \
-                     [Paragraph("✕" if idx == i else "", styles["table_cell"]) for i in range(5)]
+                     [Paragraph("X" if idx == i else "", styles["cross_cell"]) for i in range(5)]
         t = Table([header_row, rating_row], colWidths=col_w)
         t.setStyle(TableStyle([
             ("BACKGROUND",    (0,0),(-1,0),  DARK_HEADER),
