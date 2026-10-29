@@ -1785,11 +1785,17 @@ const ABSENCE_WARN_DAYS     = 10;
   // über den Schüler festgehalten wurde. Leise Schüler bekommen sonst einen
   // Vorschlag, der genauso sicher aussieht wie der eines Vielredners — dabei
   // stammt er überwiegend aus den neutralen Stunden ohne Eintrag.
+  // Unter THIN_SHARE sind die meisten Stunden neutral gezählt; wer so wenig
+  // beobachtet wurde, kann keine Spitzennote vorgeschlagen bekommen (CAP_INDEX = "2–3").
+  // Sonst liegen ruhige Schüler, deren wenige Einträge überwiegend positiv sind,
+  // vor aktiven mit gemischten Einträgen — Melden würde sich nicht lohnen.
+  const THIN_SHARE = 0.35;
+  const CAP_INDEX  = 1;
   const getReliability = (courseName, studentId) => {
     const { lessons, rated } = getLessonStats(courseName, studentId);
     const share = lessons ? rated / lessons : 0;
     if (share >= 0.6)  return { key:"sicher",    label:"belastbar",  share, lessons, rated, color:C.green };
-    if (share >= 0.35) return { key:"duenn",     label:"dünn",       share, lessons, rated, color:C.amber };
+    if (share >= THIN_SHARE) return { key:"duenn",     label:"dünn",       share, lessons, rated, color:C.amber };
     return                    { key:"sehrduenn", label:"sehr dünn",  share, lessons, rated, color:C.red   };
   };
 
@@ -1806,7 +1812,9 @@ const ABSENCE_WARN_DAYS     = 10;
 
     const bands      = getBands(courseName);
     const correction = getGradeCorrection(courseName, studentId);
-    const finalIndex = Math.max(0, Math.min(5, baseIndex + correction.net));
+    const rawIndex   = Math.max(0, Math.min(5, baseIndex + correction.net));
+    const capped     = rated / lessons < THIN_SHARE && rawIndex < CAP_INDEX;
+    const finalIndex = capped ? CAP_INDEX : rawIndex;
     const punkteExact = getNotenformat(courseName) === "punkte" ? interpolatePunkte(ratio, finalIndex) : null;
 
     return {
@@ -1814,6 +1822,7 @@ const ABSENCE_WARN_DAYS     = 10;
       base: bands[baseIndex],
       correction,
       corrected: finalIndex !== baseIndex,
+      capped,
       punkteExact,
     };
   };
@@ -2378,6 +2387,11 @@ const ABSENCE_WARN_DAYS     = 10;
                     </div>
                   );
                 })()}
+                {grade.capped && (
+                  <div style={{ fontSize:13, color:C.amber, marginBottom:8 }}>
+                    Gedeckelt auf {getBands(activeCourse)[CAP_INDEX].grade}: Bei so wenigen Beobachtungen schlägt die App keine bessere Note vor.
+                  </div>
+                )}
                 {critTendencies.map(t => (
                   <div key={t.crit.id} style={{ display:"flex", justifyContent:"space-between", paddingTop:3 }}>
                     <span style={{ fontSize:13, color:C.textDim }}>{t.crit.short}</span>
@@ -3139,7 +3153,7 @@ const ABSENCE_WARN_DAYS     = 10;
                   );
                 })}
                 <div style={{ fontSize:13, color:C.textMuted, marginTop:8 }}>
-                  Notenvorschlag ab {MIN_LESSONS} Stunden und {MIN_RATED} bewerteten Tagen · Stunden ohne Eintrag zählen neutral · „dünn“ = unter 60 %, „sehr dünn“ = unter 35 % der Stunden mit Eintrag · Pädagogische Einschätzung der Lehrkraft entscheidet.
+                  Notenvorschlag ab {MIN_LESSONS} Stunden und {MIN_RATED} bewerteten Tagen · Stunden ohne Eintrag zählen neutral · „dünn“ = unter 60 %, „sehr dünn“ = unter 35 % der Stunden mit Eintrag (dann höchstens Band 2–3) · Pädagogische Einschätzung der Lehrkraft entscheidet.
                 </div>
               </div>
               )}

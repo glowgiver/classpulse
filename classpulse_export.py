@@ -140,6 +140,8 @@ MIN_LESSONS    = 3
 MIN_RATED      = 2
 NEUTRAL_SCORE  = 0.5
 MAX_PER_LESSON = 3
+THIN_SHARE     = 0.35   # Stunden mit Eintrag / anwesende Stunden
+CAP_INDEX      = 1      # Band "2–3" bzw. "9–11"
 
 def lessons_present(st):
     """Anwesende Stunden = Tage mit Eintrag + Tage ohne. Doppelstunden sind hier
@@ -274,10 +276,13 @@ def grade_proposal(lessons, rated, ratio, notenformat, test_avg=None, hw_quote=N
     bands = GRADE_BANDS_PUNKTE if notenformat == "punkte" else GRADE_BANDS_NOTEN
     base_idx = base_band_index(ratio)
     net = max(-1, min(1, test_delta(test_avg, notenformat) + hw_delta(hw_quote) + material_delta(mat_quote)))
-    final_idx = max(0, min(5, base_idx + net))
+    raw_idx = max(0, min(5, base_idx + net))
+    # Wie index.html: unter THIN_SHARE Stunden mit Eintrag keine Note besser als Band 2–3.
+    capped = (rated / lessons) < THIN_SHARE and raw_idx < CAP_INDEX
+    final_idx = CAP_INDEX if capped else raw_idx
     punkte_exact = interpolate_punkte(ratio, final_idx) if notenformat == "punkte" else None
     return {"grade": bands[final_idx][0], "label": bands[final_idx][1],
-            "base_grade": bands[base_idx][0], "corrected": final_idx != base_idx,
+            "base_grade": bands[base_idx][0], "corrected": final_idx != base_idx, "capped": capped,
             "punkte_exact": punkte_exact}
 
 def score_label(notenformat):
