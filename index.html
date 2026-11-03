@@ -518,6 +518,7 @@ function App() {
   const [openStats,    setOpenStats]     = useState(null);
   const [absenceListOpen, setAbsenceListOpen] = useState(false);
   const [nameFilter,   setNameFilter]    = useState("");   // Beobachten-Liste
+  const [expandedSt,   setExpandedSt]    = useState(null); // Beobachten-Liste: aufgeklappte Zeile
   const [hwFilter,     setHwFilter]      = useState("");   // Hausaufgaben-Phase
   // Notenvorschläge stehen in der Übersicht neben Klarnamen, untereinander,
   // in Rot und Grün — ein Blick über die Schulter genügt für ein Klassenranking.
@@ -632,7 +633,12 @@ function App() {
       .sort((a, b) => a[0] < b[0] ? 1 : -1);
     if (!entries.length) return null;
     const [key, text] = entries[0];
-    return { date: key.slice(0, key.indexOf("_")), text };
+    const date = key.slice(0, key.indexOf("_"));
+    // Eine Aufgabe von vor Wochen ist keine "letzte HA" mehr — sie wäre
+    // längst kontrolliert oder vergessen und stünde nur noch im Weg.
+    const ageDays = (new Date(today_) - new Date(date)) / 86400000;
+    if (!(ageDays <= 14)) return null;
+    return { date, text };
   };
 
   const openBackfill = (courseName, date) => {
@@ -1405,7 +1411,7 @@ function App() {
     };
   }, [goBack]);
 
-  const goHome = () => { setActiveCourse(null); setSessionPhase("select"); setActiveStudent(null); setLastAction(null); setNameFilter(""); setHwFilter(""); };
+  const goHome = () => { setActiveCourse(null); setSessionPhase("select"); setActiveStudent(null); setLastAction(null); setNameFilter(""); setExpandedSt(null); setHwFilter(""); };
 
   // Die Kursblöcke des Exports wurden zweimal inline gebaut und wichen in der
   // Kopfzeile voneinander ab — dort steckte die verrutschte Spalte (F23).
@@ -2678,9 +2684,14 @@ const ABSENCE_WARN_DAYS     = 10;
           // mit gleicher Wahrscheinlichkeit ganz unten. Tippen schlägt Scrollen.
           const q = nameFilter.trim().toLowerCase();
           const hit = st => !q || st.name.toLowerCase().includes(q);
-          const openSt = available.filter(st => hit(st) && !getToday(activeCourse, st.id).done);
-          const doneSt = available.filter(st => hit(st) &&  getToday(activeCourse, st.id).done);
-          const sugg   = q ? [] : suggested.filter(st => !getToday(activeCourse, st.id).done);
+          // Die aufgeklappte Zeile wandert nach dem ersten Eintrag sonst in „erledigt“
+          // und nimmt das Panel mit — für mehrere Kriterien hintereinander muss sie
+          // an Ort und Stelle bleiben, daher eigener Block ganz oben.
+          const pinned = available.find(st => st.id === expandedSt);
+          const notPinned = st => st.id !== expandedSt;
+          const openSt = available.filter(st => notPinned(st) && hit(st) && !getToday(activeCourse, st.id).done);
+          const doneSt = available.filter(st => notPinned(st) && hit(st) &&  getToday(activeCourse, st.id).done);
+          const sugg   = q ? [] : suggested.filter(st => notPinned(st) && !getToday(activeCourse, st.id).done);
 
           // Klebt unter dem Kopfbereich, damit nach zwei Wischern noch klar ist,
           // in welchem Abschnitt man liest.
@@ -2703,11 +2714,14 @@ const ABSENCE_WARN_DAYS     = 10;
             const gap   = getLessonStats(activeCourse, st.id).sinceLast;
             const leadObs = lead && obsFor(activeCourse, st.id).find(o =>
               o.criterionId === lead.id && o.date === today);
+            const open = expandedSt === st.id;
+            const todayObs = open ? obsFor(activeCourse, st.id).filter(o => o.date === today) : [];
+            const areas = open ? [...new Set(criteria.map(c => c.area))] : [];
             return (
-              <div key={st.id} style={{ ...S.row, gap:8,
+              <div key={st.id} style={{ ...S.row, gap:8, flexWrap:"wrap",
                 background:   highlight ? C.accentSoft : C.card,
-                borderColor:  highlight ? C.accent : C.border }}>
-                <button onClick={() => setActiveStudent(st.id)}
+                borderColor:  open ? C.accent : highlight ? C.accent : C.border }}>
+                <button aria-expanded={open} onClick={() => setExpandedSt(open ? null : st.id)}
                   style={{ flex:1, minWidth:0, textAlign:"left", background:"none",
                            border:"none", padding:"2px 0", minHeight:44, cursor:"pointer",
                            WebkitAppearance:"none" }}>
@@ -2731,6 +2745,31 @@ const ABSENCE_WARN_DAYS     = 10;
                       style={quickBtn(C.red, leadObs?.rating === "-")}>−</button>
                   </div>
                 )}
+                {open && (
+                  <div style={{ flexBasis:"100%", borderTop:`1px solid ${C.border}`, paddingTop:8 }}>
+                    {areas.map(area => (
+                      <div key={area} style={{ marginBottom:6 }}>
+                        <div style={{ fontSize:12, color:C.textMuted, fontWeight:700, letterSpacing:"0.06em",
+                                      textTransform:"uppercase", margin:"4px 0" }}>{area}</div>
+                        {criteria.filter(c => c.area === area).map(crit => {
+                          const e = todayObs.find(o => o.criterionId === crit.id);
+                          return (
+                            <div key={crit.id} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
+                              <span style={{ flex:1, minWidth:0, fontSize:15, fontWeight:600,
+                                             color: e?.rating === "+" ? C.green : e?.rating === "-" ? C.red : C.text }}>{crit.short}</span>
+                              <button onClick={() => addObs(st.id, crit.id, "+")}
+                                style={quickBtn(C.green, e?.rating === "+")}>+</button>
+                              <button onClick={() => addObs(st.id, crit.id, "-")}
+                                style={quickBtn(C.red, e?.rating === "-")}>−</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                    <button onClick={() => setActiveStudent(st.id)}
+                      style={{ ...S.btnSm("ghost"), width:"100%", marginTop:2 }}>Notiz / Details →</button>
+                  </div>
+                )}
               </div>
             );
           };
@@ -2739,7 +2778,7 @@ const ABSENCE_WARN_DAYS     = 10;
             <>
               {lead && (
                 <div style={{ fontSize:13, color:C.textMuted, marginBottom:10 }}>
-                  Schnellknöpfe bewerten „{lead.short}“ · Name antippen für alle Kriterien
+                  Knöpfe rechts bewerten „{lead.short}“ · Name antippen klappt alle Kriterien auf (bleibt oben stehen)
                 </div>
               )}
 
@@ -2758,6 +2797,13 @@ const ABSENCE_WARN_DAYS     = 10;
                   </button>
                 )}
               </div>
+
+              {pinned && (
+                <>
+                  <div style={stickyLbl}>Gerade offen — nochmal Namen antippen zum Schließen</div>
+                  {row(pinned, true)}
+                </>
+              )}
 
               {sugg.length > 0 && (
                 <>

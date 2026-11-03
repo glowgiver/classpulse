@@ -1,7 +1,7 @@
 // ClassPulse Service Worker — v1.0
 // Caches everything for full offline use
 
-const CACHE_NAME = "classpulse-v38";
+const CACHE_NAME = "classpulse-v39";
 
 // Files to cache on install (the shell)
 const PRECACHE = [
