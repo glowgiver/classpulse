@@ -476,6 +476,10 @@ function App() {
   // Schalter: unentschuldigte Fehlstunden zählen nach ABSENCE_DEADLINE_DAYS Tagen
   // als "−" im Notenvorschlag. Standardmäßig aus, bis die Fristliste durchgesehen ist.
   const [absenceRule,  setAbsenceRule]  = useState(() => loadData("obs_absenceRule", false));
+  // Festlegungen der Lehrkraft pro Kurs und Schüler: { "Kurs|schülerId": { value, calc?, hint? } }.
+  // value ist die gesetzte Note/Punktzahl ("2−", "11", "8–9"), hint ein Zusatztext für den
+  // Bewertungsbogen. Der Notenvorschlag bleibt unberührt — die Festlegung steht daneben.
+  const [gradeOverrides, setGradeOverrides] = useState(() => loadData("obs_gradeOverrides", {}));
   // Tests: eigene Liste, {id, course, date, title, grades:{studentId: note}}.
   const [tests,         setTests]        = useState(() => loadData("obs_tests", []));
 
@@ -909,6 +913,7 @@ function App() {
   useEffect(() => saveData("obs_materials",    materials),    [materials]);
   useEffect(() => saveData("obs_remoteDays",   remoteDays),   [remoteDays]);
   useEffect(() => saveData("obs_absenceRule",  absenceRule),  [absenceRule]);
+  useEffect(() => saveData("obs_gradeOverrides", gradeOverrides), [gradeOverrides]);
   useEffect(() => saveData("obs_tests",        tests),        [tests]);
 
   // Keep the running session recoverable; clear it once the lesson is ended.
@@ -1469,7 +1474,7 @@ function App() {
   };
 
   const downloadBackup = (filenamePrefix) => {
-    const data = { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences, excusedMaterial, lateArrivals, remoteDays, absenceRule };
+    const data = { courses, observations, homework, absences, topics, materials, tests, homeworkAssigned, excusedAbsences, excusedMaterial, lateArrivals, remoteDays, absenceRule, gradeOverrides };
     const backup = {
       version: "1.0",
       exportDate: new Date().toISOString(),
@@ -1510,6 +1515,7 @@ function App() {
         const lta = backup.data.lateArrivals     && typeof backup.data.lateArrivals     === "object" ? backup.data.lateArrivals     : {};
         const rmd = backup.data.remoteDays       && typeof backup.data.remoteDays       === "object" ? backup.data.remoteDays       : {};
         const arl = backup.data.absenceRule === true;
+        const gov = backup.data.gradeOverrides   && typeof backup.data.gradeOverrides   === "object" && !Array.isArray(backup.data.gradeOverrides) ? backup.data.gradeOverrides : {};
         if (!Array.isArray(c) || !Array.isArray(o) ||
             !h || typeof h !== "object" || !a || typeof a !== "object")
           throw new Error("Daten unvollständig oder beschädigt");
@@ -1538,6 +1544,7 @@ function App() {
         setLateArrivals(lta);
         setRemoteDays(rmd);
         setAbsenceRule(arl);
+        setGradeOverrides(gov);
         saveData("obs_courses",      cWithSlots);
         saveData("obs_observations", o);
         saveData("obs_homework",     h);
@@ -1551,6 +1558,7 @@ function App() {
         saveData("obs_lateArrivals",     lta);
         saveData("obs_remoteDays",       rmd);
         saveData("obs_absenceRule",      arl);
+        saveData("obs_gradeOverrides",   gov);
         setBackupImportOK(true);
         setBackupError("");
         setTimeout(() => setBackupImportOK(false), 3000);
@@ -1799,6 +1807,7 @@ const ABSENCE_WARN_DAYS     = 10;
     return                    { key:"sehrduenn", label:"sehr dünn",  share, lessons, rated, color:C.red   };
   };
 
+  const getGradeOverride = (courseName, studentId) => gradeOverrides[`${courseName}|${studentId}`] || null;
   const getGradeProposal = (courseName, studentId) => {
     const { lessons, rated, score: ratio } = getLessonStats(courseName, studentId);
     if (lessons < MIN_LESSONS || rated < MIN_RATED) return null;
@@ -2370,6 +2379,16 @@ const ABSENCE_WARN_DAYS     = 10;
             if (grade) return (
               <div style={{ background:C.accentSoft, border:`1px solid ${C.accent}`, borderRadius:10, padding:"12px 14px", marginTop:20 }}>
                 <div style={{ fontSize:13, color:C.accent, fontWeight:700, letterSpacing:"0.06em", marginBottom:6 }}>NOTENVORSCHLAG</div>
+                {(() => {
+                  const ov = getGradeOverride(activeCourse, activeStudent);
+                  if (!ov) return null;
+                  return (
+                    <div style={{ fontSize:14, color:C.text, fontWeight:700, marginBottom:8, paddingBottom:8, borderBottom:`1px solid ${C.border}` }}>
+                      Deine Festlegung: {getScoreLabel(activeCourse)} {ov.value}
+                      {ov.hint && <span style={{ fontWeight:400, color:C.textDim }}> · {ov.hint}</span>}
+                    </div>
+                  );
+                })()}
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
                   <span style={{ fontSize:17, fontWeight:700, color:grade.color }}>
                     {getScoreLabel(activeCourse)} {grade.grade}
@@ -3134,6 +3153,15 @@ const ABSENCE_WARN_DAYS     = 10;
                           return r.key === "sicher" ? null : <span style={{ color:r.color }}> · {r.label}</span>;
                         })()}
                       </span>
+                      {(() => {
+                        const ov = getGradeOverride(course.name, st.id);
+                        if (!ov) return null;
+                        return (
+                          <span style={{ fontSize:13, fontWeight:700, color:C.text, marginRight:8 }}>
+                            {gradesVisible ? `✎ ${ov.value}` : "✎ ····"}
+                          </span>
+                        );
+                      })()}
                       {grade ? (
                         gradesVisible ? (
                           <span style={{ fontSize:13, fontWeight:700, color:grade.color, minWidth:52, textAlign:"right" }}>
@@ -3532,7 +3560,7 @@ const ABSENCE_WARN_DAYS     = 10;
         onClick={() => {
           if (window.confirm("Wirklich ALLE Daten löschen? Dies kann nicht rückgängig gemacht werden.")) {
             ["obs_courses","obs_observations","obs_homework","obs_absences","obs_topics",
-             "obs_materials","obs_tests","obs_homeworkAssigned","obs_excusedAbsences","obs_excusedMaterial","obs_lateArrivals","obs_remoteDays","obs_absenceRule",
+             "obs_materials","obs_tests","obs_homeworkAssigned","obs_excusedAbsences","obs_excusedMaterial","obs_lateArrivals","obs_remoteDays","obs_absenceRule","obs_gradeOverrides",
              "obs_session","obs_lastAutoBackup","obs_nextAutoBackupDays"].forEach(k => localStorage.removeItem(k));
             window.location.reload();
           }
