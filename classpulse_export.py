@@ -56,6 +56,10 @@ NOTENFORMAT   = "drittelnoten"         # "drittelnoten" oder "punkte" (Oberstufe
 MITARBEIT_PCT = 60                     # siehe COURSES_META
 TEACHER       = "Philipp Tran-Huynh"
 HALF_YEAR     = "Schuljahr 2026/27 · Halbjahr 1"
+# Zwischenmeldungen (alles außer dem Halbjahr) nennen nur ungefähre Noten:
+# Sek I ganze Note + Tendenz statt Drittelnote, Oberstufe "ca. N Punkte".
+# Für die Halbjahresmeldung auf False stellen.
+ZWISCHENMELDUNG = True
 EXPORT_DATE   = datetime.date.today().strftime("%-d. %B %Y")
 
 # ── KRITERIEN — Spiegel von FREMDSPRACHEN_CRITERIA / GENERAL_CRITERIA in
@@ -473,6 +477,24 @@ def build_overview(styles, criteria):
 
 # ── SEITEN 2+ — REPRODUKTION DES ORIGINAL-BOGENS, EINE SEITE PRO SCHÜLER ────
 
+def approx_note(text):
+    """Exakte Note/Punkte -> Zwischenmeldungs-Wortlaut. 'Note 2− (gut) · x' ->
+    'Note ca. 2 (gut), Tendenz 3 · x'; 'Punkte 11 (…)' -> 'ca. 11 Punkte (…)'."""
+    import re
+    m = re.match(r"Note (\d)([+−]?) \((.*?)\)(.*)", text)
+    if m:
+        b, sg, w, rest = m.group(1), m.group(2), m.group(3), m.group(4)
+        t = f", Tendenz {int(b)-1}" if sg == "+" and int(b) > 1 else \
+            f", Tendenz {int(b)+1}" if sg == "−" and int(b) < 6 else ""
+        out = f"Note ca. {b} ({w}){t}{rest}"
+    else:
+        m = re.match(r"Punkte (\d+(?:–\d+)?) \((.*?)\)(.*)", text)
+        out = f"ca. {m.group(1)} Punkte ({m.group(2)}){m.group(3)}" if m else text
+    out = out.replace("braucht noch mehr Beobachtungen", "mehr Beobachtungen nötig")
+    # Zu lange Zeile würde den Bogen auf Seite 2 schieben -> Klammerwort weglassen.
+    return re.sub(r" \([^)]*\)", "", out, count=1) if len(out) > 75 else out
+
+
 def build_official_sheet(st, criteria, styles):
     story = [PageBreak()]
 
@@ -552,6 +574,9 @@ def build_official_sheet(st, criteria, styles):
             lehrkraft_note += f" · rechnerisch: {proposal['punkte_exact']}"
     else:
         lehrkraft_note = "noch nicht möglich"
+
+    if ZWISCHENMELDUNG:
+        lehrkraft_note = approx_note(lehrkraft_note)
 
     # student_grade: Selbsteinschätzung, z.B. digital über IServ eingesammelt
     # und hier übertragen — dann muss die Zeile nicht mehr per Hand ausgefüllt

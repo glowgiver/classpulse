@@ -396,3 +396,14 @@ in `index.html`.
 ---
 
 *Zuletzt aktualisiert: August 2026 · Gymnasium Grootmoor Hamburg · Philipp Tran-Huynh*
+
+## Zwischenmeldungen: nur ungefähre Noten
+
+Neue Regelung: Bei Zwischenmeldungen (alles außer der Halbjahresmeldung) werden
+auf dem Bewertungsbogen nur **ungefähre** Noten genannt, keine exakten.
+
+- Sek I: ganze Note + Tendenz statt Drittelnote, z. B. 2− → „Note ca. 2 (gut), Tendenz 3".
+- Oberstufe: „ca. 11 Punkte (…)"; Spannen („8–9") und Hinweise bleiben.
+- Die Kreuze bleiben exakt, nur der Notentext ist gröber.
+- Umsetzung: `ZWISCHENMELDUNG` und `approx_note()` in `classpulse_export.py`.
+  Für die Halbjahresmeldung `ZWISCHENMELDUNG = False` setzen.
