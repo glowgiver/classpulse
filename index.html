@@ -2715,6 +2715,11 @@ const ABSENCE_WARN_DAYS     = 10;
             const leadObs = lead && obsFor(activeCourse, st.id).find(o =>
               o.criterionId === lead.id && o.date === today);
             const open = expandedSt === st.id;
+            const allObs = obsFor(activeCourse, st.id).filter(isRating);
+            const lastOf = id => allObs.filter(o => o.criterionId === id).map(o => o.date).sort().pop();
+            // Bereiche ohne einen einzigen Eintrag — die Erinnerung, wo noch etwas fehlt.
+            const gapAreas = [...new Set(criteria.map(c => c.area))]
+              .filter(ar => criteria.filter(c => c.area === ar).every(c => !lastOf(c.id)));
             const todayObs = open ? obsFor(activeCourse, st.id).filter(o => o.date === today) : [];
             const areas = open ? [...new Set(criteria.map(c => c.area))] : [];
             return (
@@ -2735,6 +2740,8 @@ const ABSENCE_WARN_DAYS     = 10;
                     {stats.total > 0 && <>{" · "}
                       <span style={{ color:C.green }}>+{stats.pos}</span>/
                       <span style={{ color:C.red }}>−{stats.neg}</span></>}
+                    {!open && gapAreas.length > 0 && stats.total > 0 &&
+                      <div style={{ color:C.amber, marginTop:1 }}>noch nichts in: {gapAreas.join(", ")}</div>}
                   </div>
                 </button>
                 {lead && (
@@ -2756,7 +2763,10 @@ const ABSENCE_WARN_DAYS     = 10;
                           return (
                             <div key={crit.id} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
                               <span style={{ flex:1, minWidth:0, fontSize:15, fontWeight:600,
-                                             color: e?.rating === "+" ? C.green : e?.rating === "-" ? C.red : C.text }}>{crit.short}</span>
+                                             color: e?.rating === "+" ? C.green : e?.rating === "-" ? C.red : C.text }}>{crit.short}
+                                {!lastOf(crit.id)
+                                  ? <span style={{ display:"block", fontSize:12, fontWeight:400, color:C.amber }}>noch nie bewertet</span>
+                                  : <span style={{ display:"block", fontSize:12, fontWeight:400, color:C.textMuted }}>zuletzt {fmtLogDate(lastOf(crit.id))}</span>}</span>
                               <button onClick={() => addObs(st.id, crit.id, "+")}
                                 style={quickBtn(C.green, e?.rating === "+")}>+</button>
                               <button onClick={() => addObs(st.id, crit.id, "-")}
