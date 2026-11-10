@@ -907,6 +907,20 @@ function App() {
     }
   };
 
+  // Die aufgeklappte Zeile wandert in den Block „Gerade offen“ ganz oben; die Seite
+  // bleibt sonst unten stehen und man müsste selbst hochscrollen, um die Kriterien zu
+  // erreichen. Also zur Zeile scrollen, sobald eine neue aufgeklappt wird.
+  useEffect(() => {
+    if (!expandedSt) return;
+    const t = setTimeout(() => {
+      const el = document.getElementById("open-row");
+      if (!el) return;
+      let reduce = false;
+      try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+      el.scrollIntoView({ block:"start", behavior: reduce ? "auto" : "smooth" });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [expandedSt]);
   useEffect(() => saveData("obs_courses",      courses),      [courses]);
   useEffect(() => saveData("obs_observations", observations), [observations]);
   useEffect(() => saveData("obs_homework",     homework),     [homework]);
@@ -2723,7 +2737,10 @@ const ABSENCE_WARN_DAYS     = 10;
             const todayObs = open ? obsFor(activeCourse, st.id).filter(o => o.date === today) : [];
             const areas = open ? [...new Set(criteria.map(c => c.area))] : [];
             return (
-              <div key={st.id} style={{ ...S.row, gap:8, flexWrap:"wrap",
+              <div key={st.id} id={open ? "open-row" : undefined}
+                style={{ ...S.row, gap:8, flexWrap:"wrap",
+                // Platz für Kopfbereich und das klebende „Gerade offen“-Label lassen
+                scrollMarginTop:"calc(52px + max(16px, env(safe-area-inset-top)) + 44px)",
                 background:   highlight ? C.accentSoft : C.card,
                 borderColor:  open ? C.accent : highlight ? C.accent : C.border }}>
                 <button aria-expanded={open} onClick={() => setExpandedSt(open ? null : st.id)}

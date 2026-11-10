@@ -490,7 +490,7 @@ def approx_note(text):
     else:
         m = re.match(r"Punkte (\d+(?:–\d+)?) \((.*?)\)(.*)", text)
         out = f"ca. {m.group(1)} Punkte ({m.group(2)}){m.group(3)}" if m else text
-    out = out.replace("braucht noch mehr Beobachtungen", "mehr Beobachtungen nötig")
+    out = out.replace("braucht noch mehr Beobachtungen", "noch gut verbesserbar")
     # Zu lange Zeile würde den Bogen auf Seite 2 schieben -> Klammerwort weglassen.
     return re.sub(r" \([^)]*\)", "", out, count=1) if len(out) > 75 else out
 
